@@ -25,6 +25,7 @@ pub fn build(project: &Project, release: bool, reporter: &Reporter) -> Result<Pa
         destination.parent().expect("profile directory"),
         &metadata.id,
     );
+    reporter.verbose(&format!("Staging artifact in {}", staging.display()));
 
     remove_tree_if_exists(&staging)?;
     fs::create_dir_all(&staging).map_err(Error::io)?;
@@ -368,18 +369,20 @@ fn render_workshop(project: &Project, metadata: &ModMetadata) -> Result<String> 
     let public = project.root.join(&project.config.paths.public);
     let description_path = public.join("description.md");
     let description_template = fs::read_to_string(&description_path).map_err(Error::io)?;
-    if description_template.matches(CHANGELOG_MARKER).count() != 1
-        || !description_template.trim_end().ends_with(CHANGELOG_MARKER)
-    {
+    let marker_count = description_template.matches(CHANGELOG_MARKER).count();
+    let rendered_markdown = if marker_count == 0 {
+        description_template
+    } else if marker_count == 1 && description_template.trim_end().ends_with(CHANGELOG_MARKER) {
+        let changelog = fs::read_to_string(project.root.join("CHANGELOG.md")).map_err(Error::io)?;
+        let releases = release_history(&changelog, &metadata.version)?;
+        description_template.replace(CHANGELOG_MARKER, &releases)
+    } else {
         return Err(Error::validation(format!(
-            "{}: {CHANGELOG_MARKER} must appear once as the final content",
+            "{}: {CHANGELOG_MARKER} must appear at most once and as the final content",
             description_path.display()
         )));
-    }
-    let changelog = fs::read_to_string(project.root.join("CHANGELOG.md")).map_err(Error::io)?;
-    let releases = release_history(&changelog, &metadata.version)?;
-    let description =
-        markdown_to_bbcode(&description_template.replace(CHANGELOG_MARKER, &releases));
+    };
+    let description = markdown_to_bbcode(&rendered_markdown);
     if description.len() >= WORKSHOP_DESCRIPTION_MAX_BYTES {
         return Err(Error::validation(format!(
             "Workshop description must be under {WORKSHOP_DESCRIPTION_MAX_BYTES} bytes; found {}",
