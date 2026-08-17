@@ -70,6 +70,14 @@ pub fn init_project(
 
     let mut config = Config::default();
     config.paths.source = source;
+    config.release.include = ["CHANGELOG.md", "LICENSE"]
+        .into_iter()
+        .map(PathBuf::from)
+        .filter(|path| root.join(path).is_file())
+        .collect();
+    if root.join("tests/run.lua").is_file() {
+        config.test.command = vec!["lua5.1".to_owned(), "tests/run.lua".to_owned()];
+    }
     write_manifest(&root, &config)?;
     reporter.status(&format!("Initialized {}", root.display()));
     Ok(())
