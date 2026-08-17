@@ -5,6 +5,7 @@ use std::io;
 pub struct Error {
     kind: ErrorKind,
     message: String,
+    exit_code: u8,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -14,14 +15,17 @@ pub enum ErrorKind {
     Validation,
     Tool,
     Io,
-    NotImplemented,
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
 
 impl Error {
     pub fn usage(error: clap::Error) -> Self {
-        Self::new(ErrorKind::Usage, error.to_string())
+        Self {
+            kind: ErrorKind::Usage,
+            message: error.to_string(),
+            exit_code: error.exit_code().try_into().unwrap_or(2),
+        }
     }
 
     pub fn project(message: impl Into<String>) -> Self {
@@ -40,14 +44,11 @@ impl Error {
         Self::new(ErrorKind::Io, error.to_string())
     }
 
-    pub fn not_implemented(message: impl Into<String>) -> Self {
-        Self::new(ErrorKind::NotImplemented, message)
-    }
-
     pub fn new(kind: ErrorKind, message: impl Into<String>) -> Self {
         Self {
             kind,
             message: message.into(),
+            exit_code: 1,
         }
     }
 
@@ -60,10 +61,7 @@ impl Error {
     }
 
     pub fn exit_code(&self) -> u8 {
-        match self.kind {
-            ErrorKind::Usage => 2,
-            _ => 1,
-        }
+        self.exit_code
     }
 }
 

@@ -1,4 +1,5 @@
 use serde::Serialize;
+use std::io::IsTerminal;
 
 use crate::cli::{OutputFormat, OutputOptions};
 use crate::error::{Error, ErrorKind};
@@ -47,7 +48,18 @@ impl Reporter {
 
     pub fn error(&self, error: &Error) {
         match self.options.format {
-            OutputFormat::Human => eprintln!("error: {}", error.message()),
+            OutputFormat::Human => {
+                let color = match self.options.color {
+                    crate::cli::ColorChoice::Always => true,
+                    crate::cli::ColorChoice::Never => false,
+                    crate::cli::ColorChoice::Auto => std::io::stderr().is_terminal(),
+                };
+                if color {
+                    eprintln!("\x1b[31merror:\x1b[0m {}", error.message());
+                } else {
+                    eprintln!("error: {}", error.message());
+                }
+            }
             OutputFormat::Json => println!(
                 "{}",
                 serde_json::to_string(&ErrorEvent {
@@ -69,6 +81,5 @@ fn kind_name(kind: ErrorKind) -> &'static str {
         ErrorKind::Validation => "validation",
         ErrorKind::Tool => "tool",
         ErrorKind::Io => "io",
-        ErrorKind::NotImplemented => "not_implemented",
     }
 }
