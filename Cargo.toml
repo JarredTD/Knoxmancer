@@ -3,7 +3,7 @@ name = "knoxmancer"
 version = "0.1.0"
 edition = "2024"
 description = "Project Zomboid mod development CLI"
-license = "AGPL-3.0-only"
+license = "AGPL-3.0"
 
 [[bin]]
 name = "knoxmancer"
