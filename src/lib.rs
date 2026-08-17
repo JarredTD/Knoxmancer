@@ -1,3 +1,4 @@
+pub mod artifact;
 pub mod cli;
 pub mod config;
 pub mod error;
@@ -32,11 +33,24 @@ where
             let project = config::Project::discover(cli.project.as_deref())?;
             validation::test(&project, &args, &reporter)
         }
-        Command::Build(_) | Command::Install(_) | Command::Package(_) | Command::Clean(_) => Err(
-            Error::not_implemented("artifact commands are not available in this build"),
-        ),
+        Command::Build(args) => {
+            let project = config::Project::discover(cli.project.as_deref())?;
+            artifact::build(&project, args.release, &reporter).map(|_| ())
+        }
+        Command::Install(args) => {
+            let project = config::Project::discover(cli.project.as_deref())?;
+            artifact::install(&project, &args, &reporter).map(|_| ())
+        }
+        Command::Package(args) => {
+            let project = config::Project::discover(cli.project.as_deref())?;
+            artifact::package(&project, &args, &reporter).map(|_| ())
+        }
+        Command::Clean(args) => {
+            let project = config::Project::discover(cli.project.as_deref())?;
+            artifact::clean(&project, &args, &reporter)
+        }
     }
     .inspect_err(|error| {
-        reporter.error(&error);
+        reporter.error(error);
     })
 }
