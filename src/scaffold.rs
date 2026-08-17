@@ -241,11 +241,13 @@ fn build_label(build: &str) -> String {
 
 fn write_preview(path: &Path) -> Result<()> {
     let mut raw = Vec::with_capacity(256 * (1 + 256 * 4));
+    let mut row = Vec::with_capacity(1 + 256 * 4);
+    row.push(0);
     for _ in 0..256 {
-        raw.push(0);
-        for _ in 0..256 {
-            raw.extend_from_slice(&[44, 48, 46, 255]);
-        }
+        row.extend_from_slice(&[44, 48, 46, 255]);
+    }
+    for _ in 0..256 {
+        raw.extend_from_slice(&row);
     }
 
     let mut compressed = vec![0x78, 0x01];

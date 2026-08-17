@@ -7,24 +7,13 @@ use crate::error::{Error, Result};
 
 pub const MANIFEST_NAME: &str = "knoxmancer.toml";
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]
 pub struct Config {
     pub project: ProjectConfig,
     pub paths: PathsConfig,
     pub test: TestConfig,
     pub release: ReleaseConfig,
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            project: ProjectConfig::default(),
-            paths: PathsConfig::default(),
-            test: TestConfig::default(),
-            release: ReleaseConfig::default(),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

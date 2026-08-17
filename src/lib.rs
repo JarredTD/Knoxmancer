@@ -3,6 +3,7 @@ pub mod config;
 pub mod error;
 pub mod output;
 pub mod scaffold;
+pub mod validation;
 
 use std::ffi::OsString;
 
@@ -22,15 +23,20 @@ where
     match cli.command {
         Command::New(args) => scaffold::new_project(&args, &reporter),
         Command::Init(args) => scaffold::init_project(cli.project.as_deref(), &args, &reporter),
-        Command::Doctor(_) | Command::Check(_) | Command::Test(_) => Err(Error::not_implemented(
-            "project validation is not available in this build",
-        )),
+        Command::Doctor(args) => validation::doctor(&args, &reporter),
+        Command::Check(args) => {
+            let project = config::Project::discover(cli.project.as_deref())?;
+            validation::check(&project, args.release, &reporter).map(|_| ())
+        }
+        Command::Test(args) => {
+            let project = config::Project::discover(cli.project.as_deref())?;
+            validation::test(&project, &args, &reporter)
+        }
         Command::Build(_) | Command::Install(_) | Command::Package(_) | Command::Clean(_) => Err(
             Error::not_implemented("artifact commands are not available in this build"),
         ),
     }
-    .map_err(|error| {
+    .inspect_err(|error| {
         reporter.error(&error);
-        error
     })
 }
