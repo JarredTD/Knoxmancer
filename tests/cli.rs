@@ -111,6 +111,11 @@ fn full_and_short_binaries_expose_the_same_version() {
     assert!(short.status.success());
     assert!(full.status.success());
     assert_eq!(short.stdout, full.stdout);
+
+    let help = km(&["--help"]);
+    let help = String::from_utf8(help.stdout).unwrap();
+    assert!(help.contains("Creates a complete Project Zomboid mod project"));
+    assert!(help.contains("Creates a verified Steam Workshop directory tree"));
 }
 
 #[test]

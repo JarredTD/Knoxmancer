@@ -10,18 +10,23 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
     about = "Project Zomboid mod development CLI"
 )]
 pub struct Cli {
+    /// Starts project discovery from this path instead of the current directory.
     #[arg(long, global = true, value_name = "PATH")]
     pub project: Option<PathBuf>,
 
+    /// Suppresses non-error output.
     #[arg(short, long, global = true, conflicts_with = "verbose")]
     pub quiet: bool,
 
+    /// Shows additional filesystem and tool details.
     #[arg(short, long, global = true, conflicts_with = "quiet")]
     pub verbose: bool,
 
+    /// Controls ANSI color in human-readable diagnostics.
     #[arg(long, global = true, value_enum, default_value_t = ColorChoice::Auto)]
     pub color: ColorChoice,
 
+    /// Selects human-readable or versioned newline-delimited JSON output.
     #[arg(long, global = true, value_enum, default_value_t = OutputFormat::Human)]
     pub format: OutputFormat,
 
@@ -63,14 +68,23 @@ pub enum OutputFormat {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
+    /// Creates a complete Project Zomboid mod project.
     New(NewArgs),
+    /// Adopts an existing mod project without rewriting game metadata.
     Init(InitArgs),
+    /// Reports local game paths and external tool availability.
     Doctor(DoctorArgs),
+    /// Validates project structure, metadata, and assets.
     Check(CheckArgs),
+    /// Runs the test command configured by the project.
     Test(TestArgs),
+    /// Creates a development or release artifact.
     Build(BuildArgs),
+    /// Builds and atomically installs the mod locally.
     Install(InstallArgs),
+    /// Creates a verified Steam Workshop directory tree.
     Package(PackageArgs),
+    /// Removes Knoxmancer-generated artifacts.
     Clean(CleanArgs),
 }
 
@@ -83,7 +97,7 @@ pub struct NewArgs {
     pub id: Option<String>,
     #[arg(long)]
     pub author: Option<String>,
-    #[arg(long, default_value = "42")]
+    #[arg(long, default_value = "42", value_parser = ["42"])]
     pub build: String,
 }
 
