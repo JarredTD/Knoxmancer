@@ -318,7 +318,17 @@ fn adler32(data: &[u8]) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cli::{ColorChoice, OutputFormat, OutputOptions};
     use tempfile::tempdir;
+
+    fn reporter() -> Reporter {
+        Reporter::new(OutputOptions {
+            quiet: true,
+            verbose: false,
+            color: ColorChoice::Never,
+            format: OutputFormat::Human,
+        })
+    }
 
     #[test]
     fn creates_complete_build_42_project() {
@@ -341,5 +351,85 @@ mod tests {
     fn derives_human_and_game_names() {
         assert_eq!(display_name("connected-storage"), "Connected Storage");
         assert_eq!(mod_id("connected-storage"), "ConnectedStorage");
+    }
+
+    #[test]
+    fn creates_projects_with_derived_defaults() {
+        let temporary = tempdir().unwrap();
+        let root = temporary.path().join("derived-project");
+        let args = NewArgs {
+            directory: root.clone(),
+            name: None,
+            id: None,
+            author: None,
+            build: "42".to_owned(),
+        };
+        new_project(&args, &reporter()).unwrap();
+        let metadata = fs::read_to_string(root.join("src/42/mod.info")).unwrap();
+        assert!(metadata.contains("name=Derived Project"));
+        assert!(metadata.contains("id=DerivedProject"));
+        assert!(new_project(&args, &reporter()).is_err());
+    }
+
+    #[test]
+    fn rejects_invalid_scaffold_destinations() {
+        let temporary = tempdir().unwrap();
+        let file = temporary.path().join("file");
+        fs::write(&file, "data").unwrap();
+        assert!(ensure_empty_destination(&file).is_err());
+
+        let nonempty = temporary.path().join("nonempty");
+        fs::create_dir(&nonempty).unwrap();
+        fs::write(nonempty.join("file"), "data").unwrap();
+        assert!(ensure_empty_destination(&nonempty).is_err());
+        assert!(validate_id("").is_err());
+        assert!(validate_id("valid_ID2").is_ok());
+        assert!(absolute(Path::new("relative")).unwrap().is_absolute());
+        assert_eq!(absolute(temporary.path()).unwrap(), temporary.path());
+    }
+
+    #[test]
+    fn initializes_flat_projects_and_force_replaces_manifests() {
+        let temporary = tempdir().unwrap();
+        fs::create_dir(temporary.path().join("42")).unwrap();
+        fs::write(temporary.path().join("42/mod.info"), "id=Example").unwrap();
+        fs::write(temporary.path().join("LICENSE"), "license").unwrap();
+        init_project(
+            Some(temporary.path()),
+            &InitArgs { force: false },
+            &reporter(),
+        )
+        .unwrap();
+        let manifest = fs::read_to_string(temporary.path().join(MANIFEST_NAME)).unwrap();
+        assert!(manifest.contains("source = \".\""));
+        assert!(manifest.contains("\"LICENSE\""));
+        assert!(
+            init_project(
+                Some(temporary.path()),
+                &InitArgs { force: false },
+                &reporter()
+            )
+            .is_err()
+        );
+        init_project(
+            Some(temporary.path()),
+            &InitArgs { force: true },
+            &reporter(),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn rejects_initialization_without_mod_metadata() {
+        let temporary = tempdir().unwrap();
+        assert!(
+            init_project(
+                Some(temporary.path()),
+                &InitArgs { force: false },
+                &reporter()
+            )
+            .is_err()
+        );
+        assert!(write_manifest(&temporary.path().join("missing"), &Config::default()).is_err());
     }
 }

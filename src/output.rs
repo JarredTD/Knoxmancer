@@ -83,3 +83,17 @@ fn kind_name(kind: ErrorKind) -> &'static str {
         ErrorKind::Io => "io",
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn names_every_error_kind() {
+        assert_eq!(kind_name(ErrorKind::Usage), "usage");
+        assert_eq!(kind_name(ErrorKind::Project), "project");
+        assert_eq!(kind_name(ErrorKind::Validation), "validation");
+        assert_eq!(kind_name(ErrorKind::Tool), "tool");
+        assert_eq!(kind_name(ErrorKind::Io), "io");
+    }
+}

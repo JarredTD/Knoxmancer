@@ -113,6 +113,7 @@ impl Project {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::tempdir;
 
     #[test]
     fn defaults_are_build_42_and_conventional_paths() {
@@ -120,5 +121,21 @@ mod tests {
         assert_eq!(config.project.builds, ["42"]);
         assert_eq!(config.paths.source, PathBuf::from("src"));
         assert_eq!(config.paths.output, PathBuf::from("dist"));
+    }
+
+    #[test]
+    fn discovers_projects_from_nested_files_and_rejects_invalid_manifests() {
+        let temporary = tempdir().unwrap();
+        let root = temporary.path();
+        fs::write(root.join(MANIFEST_NAME), "").unwrap();
+        fs::create_dir(root.join("nested")).unwrap();
+        let nested_file = root.join("nested/example.lua");
+        fs::write(&nested_file, "return true").unwrap();
+
+        let project = Project::discover(Some(&nested_file)).unwrap();
+        assert_eq!(project.root, root);
+
+        fs::write(root.join(MANIFEST_NAME), "not valid toml = [").unwrap();
+        assert!(Project::load(root).is_err());
     }
 }

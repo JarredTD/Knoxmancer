@@ -263,6 +263,12 @@ fn handles_scaffold_and_output_edge_cases() {
     assert!(quiet.status.success());
     assert!(quiet.stderr.is_empty());
 
+    let json = km(&["--format", "json", "--project", path(&project), "check"]);
+    assert!(json.status.success());
+    let event: serde_json::Value = serde_json::from_slice(&json.stdout).unwrap();
+    assert_eq!(event["schema_version"], 1);
+    assert_eq!(event["status"], "ok");
+
     let verbose = km(&["--verbose", "--project", path(&project), "build"]);
     assert!(verbose.status.success());
     assert!(
@@ -282,6 +288,19 @@ fn handles_scaffold_and_output_edge_cases() {
         String::from_utf8(colored.stderr)
             .unwrap()
             .contains("\u{1b}[31merror:")
+    );
+
+    let plain = km(&[
+        "--color",
+        "never",
+        "--project",
+        path(&temporary.path().join("missing")),
+        "check",
+    ]);
+    assert!(
+        String::from_utf8(plain.stderr)
+            .unwrap()
+            .starts_with("error:")
     );
 
     assert!(km(&["--project", path(&project), "clean"]).status.success());

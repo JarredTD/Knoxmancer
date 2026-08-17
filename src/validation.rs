@@ -302,7 +302,44 @@ pub fn home_directory() -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cli::{ColorChoice, OutputFormat, OutputOptions};
+    use crate::config::Config;
     use tempfile::tempdir;
+
+    fn reporter() -> Reporter {
+        Reporter::new(OutputOptions {
+            quiet: true,
+            verbose: false,
+            color: ColorChoice::Never,
+            format: OutputFormat::Human,
+        })
+    }
+
+    fn valid_project(root: &Path) -> Project {
+        fs::create_dir_all(root.join("src/42")).unwrap();
+        fs::create_dir_all(root.join("public")).unwrap();
+        fs::write(
+            root.join("src/42/mod.info"),
+            "name=Example\nid=Example\nmodversion=1.0.0\n",
+        )
+        .unwrap();
+        fs::write(
+            root.join("CHANGELOG.md"),
+            "# Changelog\n\n## 1.0.0\n\n- Note\n",
+        )
+        .unwrap();
+        fs::write(root.join("public/description.md"), "Description").unwrap();
+        fs::write(root.join("public/workshop.txt"), "{{DESCRIPTION}}").unwrap();
+        let mut png = Vec::from(b"\x89PNG\r\n\x1a\n".as_slice());
+        png.extend_from_slice(&[0; 8]);
+        png.extend_from_slice(&256_u32.to_be_bytes());
+        png.extend_from_slice(&256_u32.to_be_bytes());
+        fs::write(root.join("public/preview.png"), png).unwrap();
+        Project {
+            root: root.to_path_buf(),
+            config: Config::default(),
+        }
+    }
 
     #[test]
     fn reads_mod_metadata() {
@@ -320,5 +357,109 @@ mod tests {
         let path = temporary.path().join("mod.info");
         fs::write(&path, "name=Example\nid=Example\nmodversion=1.2\n").unwrap();
         assert!(read_metadata(&path, "42").is_err());
+    }
+
+    #[test]
+    fn rejects_missing_and_invalid_metadata_fields() {
+        let temporary = tempdir().unwrap();
+        let path = temporary.path().join("mod.info");
+        assert!(read_metadata(&path, "42").is_err());
+        fs::write(&path, "name=Example\nid=bad-id\nmodversion=1.0.0\n").unwrap();
+        assert!(read_metadata(&path, "42").is_err());
+        fs::write(&path, "name=Example\nid=Example\n").unwrap();
+        assert!(read_metadata(&path, "42").is_err());
+    }
+
+    #[test]
+    fn accumulates_cross_build_validation_problems() {
+        let temporary = tempdir().unwrap();
+        let mut value = valid_project(temporary.path());
+        fs::create_dir_all(temporary.path().join("src/41")).unwrap();
+        fs::write(
+            temporary.path().join("src/41/mod.info"),
+            "name=Other\nid=Other\nmodversion=2.0.0\n",
+        )
+        .unwrap();
+        value.config.project.builds.push("41".to_owned());
+        let error = check(&value, false, &reporter()).unwrap_err().to_string();
+        assert!(error.contains("uses ID Other"));
+        assert!(error.contains("uses version 2.0.0"));
+
+        value.config.project.builds.clear();
+        assert!(check(&value, false, &reporter()).is_err());
+    }
+
+    #[test]
+    fn validates_changelog_failure_modes() {
+        let temporary = tempdir().unwrap();
+        let mut problems = Vec::new();
+        validate_changelog(temporary.path(), "1.0.0", &mut problems);
+        assert_eq!(problems.len(), 1);
+        fs::write(temporary.path().join("CHANGELOG.md"), "no releases").unwrap();
+        validate_changelog(temporary.path(), "1.0.0", &mut problems);
+        assert!(
+            problems
+                .iter()
+                .any(|problem| problem.contains("add `## 1.0.0`"))
+        );
+        fs::write(temporary.path().join("CHANGELOG.md"), "## 0.9.0\n").unwrap();
+        validate_changelog(temporary.path(), "1.0.0", &mut problems);
+        assert!(
+            problems
+                .iter()
+                .any(|problem| problem.contains("expected 1.0.0"))
+        );
+    }
+
+    #[test]
+    fn validates_preview_and_release_failure_modes() {
+        let temporary = tempdir().unwrap();
+        let mut value = valid_project(temporary.path());
+        let preview = temporary.path().join("public/preview.png");
+        let mut png = fs::read(&preview).unwrap();
+        png[16..20].copy_from_slice(&128_u32.to_be_bytes());
+        fs::write(&preview, png).unwrap();
+        let mut problems = Vec::new();
+        validate_public(&value, &mut problems);
+        assert!(problems.iter().any(|problem| problem.contains("128x256")));
+
+        fs::write(&preview, vec![0; PREVIEW_MAX_BYTES as usize]).unwrap();
+        validate_public(&value, &mut problems);
+        assert!(
+            problems
+                .iter()
+                .any(|problem| problem.contains("under 1000 KB"))
+        );
+
+        value.config.release.include.push(PathBuf::from("MISSING"));
+        value.config.release.minify = Some(crate::config::MinifyConfig {
+            command: "knoxmancer-command-that-does-not-exist".to_owned(),
+            args: Vec::new(),
+        });
+        validate_release(&value, &mut problems);
+        assert!(
+            problems
+                .iter()
+                .any(|problem| problem.contains("release file is missing"))
+        );
+        assert!(
+            problems
+                .iter()
+                .any(|problem| problem.contains("was not found"))
+        );
+    }
+
+    #[test]
+    fn validates_test_configuration_and_project_files() {
+        let temporary = tempdir().unwrap();
+        let mut value = valid_project(temporary.path());
+        assert!(test(&value, &TestArgs {}, &reporter()).is_err());
+        value.config.test.command = vec!["knoxmancer-command-that-does-not-exist".to_owned()];
+        assert!(test(&value, &TestArgs {}, &reporter()).is_err());
+
+        fs::remove_file(temporary.path().join("public/description.md")).unwrap();
+        assert!(check(&value, false, &reporter()).is_err());
+        assert!(home_directory().is_some());
+        assert!(!command_exists("knoxmancer-command-that-does-not-exist"));
     }
 }

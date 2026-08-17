@@ -491,6 +491,25 @@ fn inline(text: &str, link: &Regex, bold: &Regex, italic: &Regex, code: &Regex) 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cli::{ColorChoice, OutputFormat, OutputOptions};
+    use crate::config::Config;
+    use tempfile::tempdir;
+
+    fn reporter() -> Reporter {
+        Reporter::new(OutputOptions {
+            quiet: true,
+            verbose: false,
+            color: ColorChoice::Never,
+            format: OutputFormat::Human,
+        })
+    }
+
+    fn project(root: &Path) -> Project {
+        Project {
+            root: root.to_path_buf(),
+            config: Config::default(),
+        }
+    }
 
     #[test]
     fn converts_supported_markdown() {
@@ -507,5 +526,148 @@ mod tests {
     fn requires_current_release_first() {
         assert!(release_history("# Changelog\n\n## 1.0.0\n\n- Initial", "1.0.0").is_ok());
         assert!(release_history("# Changelog\n\n## 0.9.0\n\n- Old", "1.0.0").is_err());
+    }
+
+    #[test]
+    fn validates_output_paths() {
+        let temporary = tempdir().unwrap();
+        let mut value = project(temporary.path());
+        assert_eq!(output_root(&value).unwrap(), temporary.path().join("dist"));
+
+        value.config.paths.output = PathBuf::from("../outside");
+        assert!(output_root(&value).is_err());
+        value.config.paths.output = temporary.path().join("absolute");
+        assert!(output_root(&value).is_err());
+        value.config.paths.output = PathBuf::from("src/generated");
+        assert!(output_root(&value).is_err());
+        value.config.paths.output = PathBuf::new();
+        assert!(output_root(&value).is_err());
+    }
+
+    #[test]
+    fn reports_copy_and_atomic_replacement_failures() {
+        let temporary = tempdir().unwrap();
+        let missing = temporary.path().join("missing");
+        assert!(copy_tree(&missing, &temporary.path().join("copy")).is_err());
+        assert!(copy_file(&missing, &temporary.path().join("file")).is_err());
+
+        let destination = temporary.path().join("artifact");
+        fs::create_dir(&destination).unwrap();
+        fs::write(destination.join("old.txt"), "old").unwrap();
+        assert!(atomic_replace(&missing, &destination).is_err());
+        assert_eq!(
+            fs::read_to_string(destination.join("old.txt")).unwrap(),
+            "old"
+        );
+    }
+
+    #[test]
+    fn removes_read_only_trees() {
+        let temporary = tempdir().unwrap();
+        let tree = temporary.path().join("tree");
+        fs::create_dir(&tree).unwrap();
+        let file = tree.join("readonly.txt");
+        fs::write(&file, "data").unwrap();
+        let mut permissions = file.metadata().unwrap().permissions();
+        permissions.set_readonly(true);
+        fs::set_permissions(&file, permissions).unwrap();
+        remove_tree_if_exists(&tree).unwrap();
+        assert!(!tree.exists());
+        remove_tree_if_exists(&tree).unwrap();
+    }
+
+    #[test]
+    fn reports_minifier_process_and_output_failures() {
+        let temporary = tempdir().unwrap();
+        let lua = temporary.path().join("42/media/lua/client/example.lua");
+        fs::create_dir_all(lua.parent().unwrap()).unwrap();
+        fs::write(&lua, "return true").unwrap();
+
+        let missing = MinifyConfig {
+            command: "knoxmancer-command-that-does-not-exist".to_owned(),
+            args: Vec::new(),
+        };
+        assert!(minify_lua(temporary.path(), &missing).is_err());
+
+        #[cfg(windows)]
+        let failed = MinifyConfig {
+            command: "cmd".to_owned(),
+            args: vec!["/c".to_owned(), "exit".to_owned(), "1".to_owned()],
+        };
+        #[cfg(unix)]
+        let failed = MinifyConfig {
+            command: "false".to_owned(),
+            args: Vec::new(),
+        };
+        assert!(minify_lua(temporary.path(), &failed).is_err());
+
+        #[cfg(windows)]
+        let no_output = MinifyConfig {
+            command: "cmd".to_owned(),
+            args: vec![
+                "/c".to_owned(),
+                "exit".to_owned(),
+                "0".to_owned(),
+                "{output}".to_owned(),
+            ],
+        };
+        #[cfg(unix)]
+        let no_output = MinifyConfig {
+            command: "true".to_owned(),
+            args: vec!["{output}".to_owned()],
+        };
+        assert!(minify_lua(temporary.path(), &no_output).is_err());
+    }
+
+    #[test]
+    fn validates_workshop_templates_and_limits() {
+        let temporary = tempdir().unwrap();
+        let value = project(temporary.path());
+        let public = temporary.path().join("public");
+        fs::create_dir(&public).unwrap();
+        fs::write(
+            temporary.path().join("CHANGELOG.md"),
+            "# Changelog\n\n## 1.0.0\n\n- Note\n",
+        )
+        .unwrap();
+        fs::write(public.join("workshop.txt"), "{{DESCRIPTION}}").unwrap();
+        let metadata = ModMetadata {
+            name: "Example".to_owned(),
+            id: "Example".to_owned(),
+            version: "1.0.0".to_owned(),
+            build: "42".to_owned(),
+        };
+
+        fs::write(public.join("description.md"), "plain").unwrap();
+        assert!(
+            render_workshop(&value, &metadata)
+                .unwrap()
+                .contains("description=plain")
+        );
+        fs::write(public.join("description.md"), "{{CHANGELOG}}\ntrailing").unwrap();
+        assert!(render_workshop(&value, &metadata).is_err());
+        fs::write(
+            public.join("description.md"),
+            "x".repeat(WORKSHOP_DESCRIPTION_MAX_BYTES),
+        )
+        .unwrap();
+        assert!(render_workshop(&value, &metadata).is_err());
+        fs::write(public.join("description.md"), "plain").unwrap();
+        fs::write(public.join("workshop.txt"), "missing marker").unwrap();
+        assert!(render_workshop(&value, &metadata).is_err());
+
+        assert!(release_history("## 1.0.0\n\nNo note", "1.0.0").is_err());
+        assert_eq!(
+            release_history("## 1.0.0\n\n- New\n\n## 0.9.0\n\n- Old", "1.0.0").unwrap(),
+            "### 1.0.0\n- New\n\n### 0.9.0\n- Old"
+        );
+    }
+
+    #[test]
+    fn clean_rejects_unsafe_output() {
+        let temporary = tempdir().unwrap();
+        let mut value = project(temporary.path());
+        value.config.paths.output = PathBuf::from("src/output");
+        assert!(clean(&value, &CleanArgs {}, &reporter()).is_err());
     }
 }
