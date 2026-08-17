@@ -1,7 +1,7 @@
 # Knoxmancer
 
-Project Zomboid mod development CLI. Knoxmancer is an unofficial community
-project and is not affiliated with The Indie Stone.
+Project Zomboid mod development CLI. Knoxmancer is an unofficial project and
+is not affiliated with The Indie Stone.
 
 ## Install
 
@@ -31,15 +31,6 @@ stored in `knoxmancer.toml`. Artifacts are written under `dist/dev`,
 `dist/release`, and `dist/workshop`.
 
 Use `--format json` for versioned newline-delimited JSON output.
-
-## Development
-
-```sh
-cargo fmt --check
-cargo clippy --all-targets --all-features -- -D warnings
-cargo test --all-features
-cargo doc --no-deps --all-features
-```
 
 Commits use a single-line Conventional Commit subject. The project is licensed
 under the GNU Affero General Public License v3; see `LICENSE`.
