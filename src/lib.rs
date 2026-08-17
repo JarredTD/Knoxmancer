@@ -2,6 +2,7 @@ pub mod cli;
 pub mod config;
 pub mod error;
 pub mod output;
+pub mod scaffold;
 
 use std::ffi::OsString;
 
@@ -19,9 +20,8 @@ where
     let reporter = Reporter::new(cli.output_options());
 
     match cli.command {
-        Command::New(_) | Command::Init(_) => Err(Error::not_implemented(
-            "project scaffolding is not available in this build",
-        )),
+        Command::New(args) => scaffold::new_project(&args, &reporter),
+        Command::Init(args) => scaffold::init_project(cli.project.as_deref(), &args, &reporter),
         Command::Doctor(_) | Command::Check(_) | Command::Test(_) => Err(Error::not_implemented(
             "project validation is not available in this build",
         )),
