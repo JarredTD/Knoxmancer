@@ -27,7 +27,7 @@ jobs:
       - run: cargo fmt --check
       - run: cargo clippy --locked --all-targets --all-features -- -D warnings
       - run: RUSTDOCFLAGS="-D warnings" cargo doc --locked --no-deps --all-features --document-private-items
-      - run: cargo llvm-cov --locked --all-features --workspace --fail-under-regions 90 --fail-under-functions 90 --fail-under-lines 90
+      - run: cargo llvm-cov --locked --all-features --workspace --fail-under-regions 95 --fail-under-functions 95 --fail-under-lines 95
       - run: cargo audit
 
   test:
