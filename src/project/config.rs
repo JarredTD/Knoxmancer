@@ -1,3 +1,5 @@
+//! Project manifest configuration and discovery.
+
 use std::fs;
 use std::path::{Path, PathBuf};
 

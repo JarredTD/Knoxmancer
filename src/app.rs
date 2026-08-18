@@ -1,12 +1,11 @@
 //! Application workflows connecting CLI input, core operations, and output.
 
-use crate::artifact::{self, BuildArtifact, BuildProfile};
+use crate::build::{self, BuildArtifact, BuildProfile};
+use crate::cli::Reporter;
 use crate::cli::{Cli, Command, NewArgs};
-use crate::config::{self, Project};
 use crate::error::Result;
-use crate::output::Reporter;
+use crate::project::{Project, ValidatedProject, config, validation};
 use crate::scaffold::{self, NewProjectOptions};
-use crate::validation::{self, ValidatedProject};
 
 pub(crate) fn run(cli: Cli, reporter: &Reporter) -> Result<()> {
     let project_start = cli.project;
@@ -18,7 +17,7 @@ pub(crate) fn run(cli: Cli, reporter: &Reporter) -> Result<()> {
             Ok(())
         }
         Command::Doctor(_) => {
-            for line in crate::environment::doctor() {
+            for line in crate::system::environment::doctor() {
                 reporter.status(&line);
             }
             Ok(())
@@ -37,7 +36,7 @@ pub(crate) fn run(cli: Cli, reporter: &Reporter) -> Result<()> {
                 "Running {}",
                 project.config.test.command.join(" ")
             ));
-            for line in crate::test_runner::run(&validated)? {
+            for line in crate::project::test_runner::run(&validated)? {
                 reporter.status(&line);
             }
             reporter.status("Tests passed");
@@ -50,7 +49,7 @@ pub(crate) fn run(cli: Cli, reporter: &Reporter) -> Result<()> {
         Command::Install(args) => {
             let project = discover(project_start.as_deref())?;
             let built = build(&project, profile(args.release), reporter)?;
-            let installed = artifact::install(&built, args.root.as_deref())?;
+            let installed = build::install(&built, args.root.as_deref())?;
             report_warnings(&installed.warnings, reporter);
             reporter.status(&format!("Installed {}", installed.path.display()));
             Ok(())
@@ -60,7 +59,7 @@ pub(crate) fn run(cli: Cli, reporter: &Reporter) -> Result<()> {
             let validated = validation::check(&project, true)?;
             report_checked(&validated, reporter);
             let built = build_validated(&validated, BuildProfile::Release, reporter)?;
-            let release = artifact::ReleaseArtifact::try_from(built)?;
+            let release = build::ReleaseArtifact::try_from(built)?;
             let packaged = crate::workshop::package(&validated, &release)?;
             report_warnings(&packaged.warnings, reporter);
             reporter.status(&format!(
@@ -71,7 +70,7 @@ pub(crate) fn run(cli: Cli, reporter: &Reporter) -> Result<()> {
         }
         Command::Clean(_) => {
             let project = discover(project_start.as_deref())?;
-            let result = artifact::clean(&project)?;
+            let result = build::clean(&project)?;
             if result.removed {
                 reporter.status(&format!("Removed {}", result.path.display()));
             } else {
@@ -116,7 +115,7 @@ fn build_validated(
     reporter: &Reporter,
 ) -> Result<BuildArtifact> {
     reporter.verbose("Staging artifact with atomic replacement");
-    let artifact = artifact::build(validated, profile)?;
+    let artifact = build::build(validated, profile)?;
     for line in &artifact.tool_output {
         reporter.status(line);
     }

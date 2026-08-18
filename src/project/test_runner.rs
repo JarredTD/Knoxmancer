@@ -1,8 +1,8 @@
 //! Configured project test-command execution.
 
+use super::validation::ValidatedProject;
 use crate::error::{Error, Result};
-use crate::process;
-use crate::validation::ValidatedProject;
+use crate::system::process;
 
 pub(crate) fn run(validated: &ValidatedProject<'_>) -> Result<Vec<String>> {
     let project = validated.project;

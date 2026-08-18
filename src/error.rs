@@ -1,7 +1,7 @@
 use std::fmt;
 use std::io;
 
-use crate::diagnostic::Diagnostic;
+use crate::project::Diagnostic;
 
 #[derive(Debug)]
 pub struct Error {

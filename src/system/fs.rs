@@ -139,3 +139,41 @@ fn unique_token() -> u128 {
         .as_nanos()
         ^ u128::from(std::process::id())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    #[test]
+    fn reports_copy_and_atomic_replacement_failures() {
+        let temporary = tempdir().unwrap();
+        let missing = temporary.path().join("missing");
+        assert!(copy_tree(&missing, &temporary.path().join("copy")).is_err());
+        assert!(copy_file(&missing, &temporary.path().join("file")).is_err());
+
+        let destination = temporary.path().join("artifact");
+        fs::create_dir(&destination).unwrap();
+        fs::write(destination.join("old.txt"), "old").unwrap();
+        assert!(atomic_replace(&missing, &destination).is_err());
+        assert_eq!(
+            fs::read_to_string(destination.join("old.txt")).unwrap(),
+            "old"
+        );
+    }
+
+    #[test]
+    fn removes_read_only_trees() {
+        let temporary = tempdir().unwrap();
+        let tree = temporary.path().join("tree");
+        fs::create_dir(&tree).unwrap();
+        let file = tree.join("readonly.txt");
+        fs::write(&file, "data").unwrap();
+        let mut permissions = file.metadata().unwrap().permissions();
+        permissions.set_readonly(true);
+        fs::set_permissions(&file, permissions).unwrap();
+        remove_tree_if_exists(&tree).unwrap();
+        assert!(!tree.exists());
+        remove_tree_if_exists(&tree).unwrap();
+    }
+}

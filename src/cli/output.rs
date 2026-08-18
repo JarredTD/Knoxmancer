@@ -1,9 +1,11 @@
+//! Human-readable and NDJSON output rendering.
+
 use serde::Serialize;
 use std::io::IsTerminal;
 
-use crate::cli::{OutputFormat, OutputOptions};
-use crate::diagnostic::Diagnostic;
+use super::args::{ColorChoice, OutputFormat, OutputOptions};
 use crate::error::{Error, ErrorKind};
+use crate::project::Diagnostic;
 
 pub const JSON_SCHEMA_VERSION: u32 = 1;
 
@@ -53,9 +55,9 @@ impl Reporter {
         match self.options.format {
             OutputFormat::Human => {
                 let color = match self.options.color {
-                    crate::cli::ColorChoice::Always => true,
-                    crate::cli::ColorChoice::Never => false,
-                    crate::cli::ColorChoice::Auto => std::io::stderr().is_terminal(),
+                    ColorChoice::Always => true,
+                    ColorChoice::Never => false,
+                    ColorChoice::Auto => std::io::stderr().is_terminal(),
                 };
                 if color {
                     eprintln!("\x1b[31merror:\x1b[0m {}", error.message());

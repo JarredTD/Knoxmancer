@@ -33,6 +33,21 @@ pub(crate) fn home_directory() -> Option<PathBuf> {
         .map(PathBuf::from)
 }
 
+pub(crate) fn default_author() -> String {
+    let git_name = Command::new("git")
+        .args(["config", "user.name"])
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .and_then(|output| String::from_utf8(output.stdout).ok())
+        .map(|name| name.trim().to_owned())
+        .filter(|name| !name.is_empty());
+    git_name
+        .or_else(|| env::var("USERNAME").ok())
+        .or_else(|| env::var("USER").ok())
+        .unwrap_or_else(|| "Unknown".to_owned())
+}
+
 fn report_command(name: &str, arguments: &[&str]) -> String {
     match Command::new(name).args(arguments).output() {
         Ok(output) if output.status.success() => {

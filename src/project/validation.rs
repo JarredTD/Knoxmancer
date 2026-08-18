@@ -4,13 +4,13 @@ use std::path::Path;
 use regex::Regex;
 use walkdir::WalkDir;
 
-use crate::config::Project;
-use crate::diagnostic::Diagnostic;
-use crate::environment::command_exists;
+use super::config::Project;
+use super::diagnostic::Diagnostic;
+use super::layout::ProjectLayout;
+use super::metadata::{ModMetadata, read as read_metadata};
+use super::preview;
 use crate::error::{Error, Result};
-use crate::layout::ProjectLayout;
-use crate::metadata::{ModMetadata, read as read_metadata};
-use crate::preview;
+use crate::system::environment::command_exists;
 
 const PREVIEW_MAX_BYTES: u64 = 1_000_000;
 
@@ -219,9 +219,9 @@ fn validate_release(project: &Project, problems: &mut Vec<Diagnostic>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::Config;
-    use crate::environment::{command_exists, home_directory};
-    use crate::test_runner;
+    use crate::project::config::Config;
+    use crate::project::test_runner;
+    use crate::system::environment::{command_exists, home_directory};
     use std::path::PathBuf;
     use tempfile::tempdir;
 
@@ -249,35 +249,6 @@ mod tests {
             root: root.to_path_buf(),
             config: Config::default(),
         }
-    }
-
-    #[test]
-    fn reads_mod_metadata() {
-        let temporary = tempdir().unwrap();
-        let path = temporary.path().join("mod.info");
-        fs::write(&path, "name=Example\nid=Example\nmodversion=1.2.3\n").unwrap();
-        let metadata = read_metadata(&path, "42").unwrap();
-        assert_eq!(metadata.id, "Example");
-        assert_eq!(metadata.version, "1.2.3");
-    }
-
-    #[test]
-    fn rejects_non_semantic_versions() {
-        let temporary = tempdir().unwrap();
-        let path = temporary.path().join("mod.info");
-        fs::write(&path, "name=Example\nid=Example\nmodversion=1.2\n").unwrap();
-        assert!(read_metadata(&path, "42").is_err());
-    }
-
-    #[test]
-    fn rejects_missing_and_invalid_metadata_fields() {
-        let temporary = tempdir().unwrap();
-        let path = temporary.path().join("mod.info");
-        assert!(read_metadata(&path, "42").is_err());
-        fs::write(&path, "name=Example\nid=bad-id\nmodversion=1.0.0\n").unwrap();
-        assert!(read_metadata(&path, "42").is_err());
-        fs::write(&path, "name=Example\nid=Example\n").unwrap();
-        assert!(read_metadata(&path, "42").is_err());
     }
 
     #[test]
@@ -344,7 +315,7 @@ mod tests {
         );
 
         value.config.release.include.push(PathBuf::from("MISSING"));
-        value.config.release.minify = Some(crate::config::MinifyConfig {
+        value.config.release.minify = Some(crate::project::config::MinifyConfig {
             command: "knoxmancer-command-that-does-not-exist".to_owned(),
             args: Vec::new(),
         });

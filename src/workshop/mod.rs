@@ -1,0 +1,88 @@
+//! Steam Workshop upload tree construction.
+
+use std::fs;
+
+mod description;
+
+use description::render;
+
+use crate::build::ReleaseArtifact;
+use crate::error::{Error, Result};
+use crate::project::ValidatedProject;
+use crate::system::fs::{
+    atomic_replace, copy_file, copy_tree, remove_tree_if_exists, staging_path,
+};
+
+pub(crate) fn package(
+    validated: &ValidatedProject<'_>,
+    release: &ReleaseArtifact,
+) -> Result<PackageResult> {
+    let project = validated.project;
+    let metadata = &validated.metadata;
+    let release = release.artifact();
+    if release.mod_id != metadata.id {
+        return Err(Error::project(format!(
+            "release artifact ID {} does not match validated mod ID {}",
+            release.mod_id, metadata.id
+        )));
+    }
+    let output = validated.layout.output_root()?;
+    let destination = output.join("workshop").join(&metadata.id);
+    let staging = staging_path(
+        destination.parent().expect("workshop directory"),
+        &metadata.id,
+    );
+    remove_tree_if_exists(&staging)?;
+    fs::create_dir_all(&staging).map_err(Error::io)?;
+
+    let result = (|| {
+        let mod_root = staging.join("Contents/mods").join(&metadata.id);
+        fs::create_dir_all(&mod_root).map_err(Error::io)?;
+        for directory in project
+            .config
+            .project
+            .builds
+            .iter()
+            .map(String::as_str)
+            .chain(std::iter::once("common"))
+        {
+            let source = release.path.join(directory);
+            if source.is_dir() {
+                copy_tree(&source, &mod_root.join(directory))?;
+            }
+        }
+        for included in &project.config.release.include {
+            let (relative, _) = validated.layout.included(included)?;
+            let source = release.path.join(&relative);
+            if source.is_file() {
+                let file_name = relative.file_name().ok_or_else(|| {
+                    Error::project(format!("invalid included path: {}", relative.display()))
+                })?;
+                if file_name == "LICENSE" {
+                    copy_file(&source, &mod_root.join(file_name))?;
+                } else {
+                    copy_file(&source, &staging.join(file_name))?;
+                }
+            }
+        }
+        let public = validated.layout.public_root()?;
+        copy_file(&public.join("preview.png"), &staging.join("preview.png"))?;
+        fs::write(staging.join("workshop.txt"), render(project, metadata)?).map_err(Error::io)?;
+        atomic_replace(&staging, &destination)
+    })();
+    if result.is_err() {
+        let _ = remove_tree_if_exists(&staging);
+    }
+    let replacement = result?;
+    Ok(PackageResult {
+        path: destination,
+        warnings: replacement.cleanup_warning.into_iter().collect(),
+    })
+}
+
+/// Result of assembling a Steam Workshop upload tree.
+#[derive(Debug)]
+pub(crate) struct PackageResult {
+    pub path: std::path::PathBuf,
+    pub warnings: Vec<String>,
+}

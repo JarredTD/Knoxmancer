@@ -5,9 +5,9 @@ use std::path::Path;
 
 use walkdir::WalkDir;
 
-use crate::config::MinifyConfig;
 use crate::error::{Error, Result};
-use crate::process;
+use crate::project::config::MinifyConfig;
+use crate::system::process;
 
 #[derive(Debug)]
 pub(crate) struct MinifyResult {
@@ -71,4 +71,53 @@ pub(crate) fn minify_lua(root: &Path, config: &MinifyConfig) -> Result<MinifyRes
         files: files.len(),
         output: messages,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    #[test]
+    fn reports_process_and_output_failures() {
+        let temporary = tempdir().unwrap();
+        let lua = temporary.path().join("42/media/lua/client/example.lua");
+        fs::create_dir_all(lua.parent().unwrap()).unwrap();
+        fs::write(&lua, "return true").unwrap();
+
+        let missing = MinifyConfig {
+            command: "knoxmancer-command-that-does-not-exist".to_owned(),
+            args: Vec::new(),
+        };
+        assert!(minify_lua(temporary.path(), &missing).is_err());
+
+        #[cfg(windows)]
+        let failed = MinifyConfig {
+            command: "cmd".to_owned(),
+            args: vec!["/c".to_owned(), "exit".to_owned(), "1".to_owned()],
+        };
+        #[cfg(unix)]
+        let failed = MinifyConfig {
+            command: "false".to_owned(),
+            args: Vec::new(),
+        };
+        assert!(minify_lua(temporary.path(), &failed).is_err());
+
+        #[cfg(windows)]
+        let no_output = MinifyConfig {
+            command: "cmd".to_owned(),
+            args: vec![
+                "/c".to_owned(),
+                "exit".to_owned(),
+                "0".to_owned(),
+                "{output}".to_owned(),
+            ],
+        };
+        #[cfg(unix)]
+        let no_output = MinifyConfig {
+            command: "true".to_owned(),
+            args: vec!["{output}".to_owned()],
+        };
+        assert!(minify_lua(temporary.path(), &no_output).is_err());
+    }
 }

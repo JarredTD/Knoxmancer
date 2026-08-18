@@ -1,3 +1,5 @@
+//! Command-line argument definitions.
+
 use std::path::PathBuf;
 
 use clap::{Args, Parser, Subcommand, ValueEnum};

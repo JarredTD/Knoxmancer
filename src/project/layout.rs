@@ -2,7 +2,7 @@
 
 use std::path::{Component, Path, PathBuf};
 
-use crate::config::Project;
+use super::config::Project;
 use crate::error::{Error, Result};
 
 /// Project paths proven to remain within the project root.
@@ -100,7 +100,7 @@ impl<'a> ProjectLayout<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::Config;
+    use crate::project::config::Config;
     use tempfile::tempdir;
 
     fn project(root: &Path) -> Project {

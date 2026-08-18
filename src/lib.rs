@@ -3,31 +3,19 @@
 #![forbid(unsafe_code)]
 
 mod app;
-mod artifact;
+mod build;
 mod cli;
-mod config;
-mod diagnostic;
-mod environment;
 mod error;
-mod filesystem;
-mod layout;
-mod metadata;
-mod minify;
-mod output;
-mod preview;
-mod process;
+mod project;
 mod scaffold;
-mod templates;
-mod test_runner;
-mod validation;
+mod system;
 mod workshop;
 
 use std::ffi::OsString;
 
 use clap::Parser;
-use cli::Cli;
+use cli::{Cli, Reporter};
 use error::{Error, Result};
-use output::Reporter;
 
 /// Executes Knoxmancer with the supplied command-line arguments and returns its process exit code.
 pub fn execute<I, T>(args: I) -> u8

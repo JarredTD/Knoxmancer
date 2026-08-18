@@ -60,3 +60,32 @@ fn parse_fields(source: &str) -> BTreeMap<String, String> {
         .map(|(key, value)| (key.trim().to_owned(), value.trim().to_owned()))
         .collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    #[test]
+    fn reads_mod_metadata() {
+        let temporary = tempdir().unwrap();
+        let path = temporary.path().join("mod.info");
+        fs::write(&path, "name=Example\nid=Example\nmodversion=1.2.3\n").unwrap();
+        let metadata = read(&path, "42").unwrap();
+        assert_eq!(metadata.id, "Example");
+        assert_eq!(metadata.version, "1.2.3");
+    }
+
+    #[test]
+    fn rejects_missing_and_invalid_fields() {
+        let temporary = tempdir().unwrap();
+        let path = temporary.path().join("mod.info");
+        assert!(read(&path, "42").is_err());
+        fs::write(&path, "name=Example\nid=bad-id\nmodversion=1.0.0\n").unwrap();
+        assert!(read(&path, "42").is_err());
+        fs::write(&path, "name=Example\nid=Example\nmodversion=1.2\n").unwrap();
+        assert!(read(&path, "42").is_err());
+        fs::write(&path, "name=Example\nid=Example\n").unwrap();
+        assert!(read(&path, "42").is_err());
+    }
+}

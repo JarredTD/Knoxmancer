@@ -1,96 +1,15 @@
-//! Steam Workshop description rendering.
+//! Workshop description and changelog rendering.
 
 use std::fs;
 
 use regex::Regex;
 
-use crate::artifact::ReleaseArtifact;
-use crate::config::Project;
 use crate::error::{Error, Result};
-use crate::filesystem::{
-    atomic_replace, copy_file, copy_tree, remove_tree_if_exists, staging_path,
-};
-use crate::layout::ProjectLayout;
-use crate::metadata::ModMetadata;
-use crate::validation::ValidatedProject;
+use crate::project::{ModMetadata, Project, ProjectLayout};
 
 const DESCRIPTION_MARKER: &str = "{{DESCRIPTION}}";
 const CHANGELOG_MARKER: &str = "{{CHANGELOG}}";
 pub(crate) const DESCRIPTION_MAX_BYTES: usize = 8_000;
-
-pub(crate) fn package(
-    validated: &ValidatedProject<'_>,
-    release: &ReleaseArtifact,
-) -> Result<PackageResult> {
-    let project = validated.project;
-    let metadata = &validated.metadata;
-    let release = release.artifact();
-    if release.mod_id != metadata.id {
-        return Err(Error::project(format!(
-            "release artifact ID {} does not match validated mod ID {}",
-            release.mod_id, metadata.id
-        )));
-    }
-    let output = validated.layout.output_root()?;
-    let destination = output.join("workshop").join(&metadata.id);
-    let staging = staging_path(
-        destination.parent().expect("workshop directory"),
-        &metadata.id,
-    );
-    remove_tree_if_exists(&staging)?;
-    fs::create_dir_all(&staging).map_err(Error::io)?;
-
-    let result = (|| {
-        let mod_root = staging.join("Contents/mods").join(&metadata.id);
-        fs::create_dir_all(&mod_root).map_err(Error::io)?;
-        for directory in project
-            .config
-            .project
-            .builds
-            .iter()
-            .map(String::as_str)
-            .chain(std::iter::once("common"))
-        {
-            let source = release.path.join(directory);
-            if source.is_dir() {
-                copy_tree(&source, &mod_root.join(directory))?;
-            }
-        }
-        for included in &project.config.release.include {
-            let (relative, _) = validated.layout.included(included)?;
-            let source = release.path.join(&relative);
-            if source.is_file() {
-                let file_name = relative.file_name().ok_or_else(|| {
-                    Error::project(format!("invalid included path: {}", relative.display()))
-                })?;
-                if file_name == "LICENSE" {
-                    copy_file(&source, &mod_root.join(file_name))?;
-                } else {
-                    copy_file(&source, &staging.join(file_name))?;
-                }
-            }
-        }
-        let public = validated.layout.public_root()?;
-        copy_file(&public.join("preview.png"), &staging.join("preview.png"))?;
-        fs::write(staging.join("workshop.txt"), render(project, metadata)?).map_err(Error::io)?;
-        atomic_replace(&staging, &destination)
-    })();
-    if result.is_err() {
-        let _ = remove_tree_if_exists(&staging);
-    }
-    let replacement = result?;
-    Ok(PackageResult {
-        path: destination,
-        warnings: replacement.cleanup_warning.into_iter().collect(),
-    })
-}
-
-/// Result of assembling a Steam Workshop upload tree.
-#[derive(Debug)]
-pub(crate) struct PackageResult {
-    pub path: std::path::PathBuf,
-    pub warnings: Vec<String>,
-}
 
 pub(crate) fn render(project: &Project, metadata: &ModMetadata) -> Result<String> {
     let public = ProjectLayout::new(project)?.public_root()?;
@@ -213,4 +132,74 @@ fn inline(text: &str, link: &Regex, bold: &Regex, italic: &Regex, code: &Regex) 
     let text = bold.replace_all(&text, "[b]$1[/b]");
     let text = italic.replace_all(&text, "[i]$1[/i]");
     code.replace_all(&text, "[code]$1[/code]").into_owned()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::project::config::Config;
+    use tempfile::tempdir;
+
+    fn project(root: &std::path::Path) -> Project {
+        Project {
+            root: root.to_path_buf(),
+            config: Config::default(),
+        }
+    }
+
+    #[test]
+    fn converts_supported_markdown() {
+        let rendered = markdown_to_bbcode(
+            "## Heading\n\n**bold** and [link](https://example.com)\n\n- one\n- two",
+        );
+        assert!(rendered.contains("[h2]Heading[/h2]"));
+        assert!(rendered.contains("[b]bold[/b]"));
+        assert!(rendered.contains("[url=https://example.com]link[/url]"));
+        assert!(rendered.contains("[list]\n[*]one\n[*]two\n[/list]"));
+    }
+
+    #[test]
+    fn validates_templates_changelog_and_limits() {
+        let temporary = tempdir().unwrap();
+        let value = project(temporary.path());
+        let public = temporary.path().join("public");
+        fs::create_dir(&public).unwrap();
+        fs::write(
+            temporary.path().join("CHANGELOG.md"),
+            "# Changelog\n\n## 1.0.0\n\n- Note\n",
+        )
+        .unwrap();
+        fs::write(public.join("workshop.txt"), "{{DESCRIPTION}}").unwrap();
+        let metadata = ModMetadata {
+            name: "Example".to_owned(),
+            id: "Example".to_owned(),
+            version: "1.0.0".to_owned(),
+            build: "42".to_owned(),
+        };
+
+        fs::write(public.join("description.md"), "plain").unwrap();
+        assert!(
+            render(&value, &metadata)
+                .unwrap()
+                .contains("description=plain")
+        );
+        fs::write(public.join("description.md"), "{{CHANGELOG}}\ntrailing").unwrap();
+        assert!(render(&value, &metadata).is_err());
+        fs::write(
+            public.join("description.md"),
+            "x".repeat(DESCRIPTION_MAX_BYTES),
+        )
+        .unwrap();
+        assert!(render(&value, &metadata).is_err());
+        fs::write(public.join("description.md"), "plain").unwrap();
+        fs::write(public.join("workshop.txt"), "missing marker").unwrap();
+        assert!(render(&value, &metadata).is_err());
+
+        assert!(release_history("## 0.9.0\n\n- Old", "1.0.0").is_err());
+        assert!(release_history("## 1.0.0\n\nNo note", "1.0.0").is_err());
+        assert_eq!(
+            release_history("## 1.0.0\n\n- New\n\n## 0.9.0\n\n- Old", "1.0.0").unwrap(),
+            "### 1.0.0\n- New\n\n### 0.9.0\n- Old"
+        );
+    }
 }

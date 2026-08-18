@@ -1,12 +1,17 @@
+//! New-project generation and existing-project adoption.
+
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
-use crate::config::{Config, MANIFEST_NAME};
+mod naming;
+mod templates;
+
 use crate::error::{Error, Result};
-use crate::preview;
-use crate::templates;
+use crate::project::config::{Config, MANIFEST_NAME};
+use crate::project::preview;
+use crate::system::environment::default_author;
+use naming::{display_name, mod_id, validate_id, validate_text};
 
 const INITIAL_VERSION: &str = "0.1.0";
 
@@ -95,10 +100,10 @@ pub fn init_project(explicit_root: Option<&Path>, force: bool) -> Result<PathBuf
 
 fn write_scaffold(root: &Path, name: &str, id: &str, author: &str, build: &str) -> Result<()> {
     let config = Config {
-        test: crate::config::TestConfig {
+        test: crate::project::config::TestConfig {
             command: vec!["lua5.1".to_owned(), "tests/run.lua".to_owned()],
         },
-        release: crate::config::ReleaseConfig {
+        release: crate::project::config::ReleaseConfig {
             include: vec![PathBuf::from("CHANGELOG.md"), PathBuf::from("LICENSE")],
             minify: None,
         },
@@ -151,7 +156,7 @@ fn write_scaffold(root: &Path, name: &str, id: &str, author: &str, build: &str) 
         templates::render(templates::README, &values),
     )
     .map_err(Error::io)?;
-    fs::write(root.join("LICENSE"), include_str!("../LICENSE")).map_err(Error::io)?;
+    fs::write(root.join("LICENSE"), include_str!("../../LICENSE")).map_err(Error::io)?;
     fs::write(
         root.join("public/description.md"),
         templates::render(templates::DESCRIPTION, &values),
@@ -202,64 +207,6 @@ fn absolute(path: &Path) -> Result<PathBuf> {
     }
 }
 
-fn display_name(slug: &str) -> String {
-    slug.split(['-', '_'])
-        .filter(|part| !part.is_empty())
-        .map(|part| {
-            let mut characters = part.chars();
-            match characters.next() {
-                Some(first) => first.to_uppercase().collect::<String>() + characters.as_str(),
-                None => String::new(),
-            }
-        })
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
-fn mod_id(slug: &str) -> String {
-    display_name(slug).replace(' ', "")
-}
-
-fn validate_id(id: &str) -> Result<()> {
-    if id.is_empty()
-        || !id
-            .chars()
-            .all(|character| character.is_ascii_alphanumeric() || character == '_')
-    {
-        return Err(Error::project(
-            "mod ID must contain only ASCII letters, digits, and underscores",
-        ));
-    }
-    Ok(())
-}
-
-fn validate_text(field: &str, value: &str) -> Result<()> {
-    if value.trim().is_empty() {
-        return Err(Error::project(format!("{field} must not be empty")));
-    }
-    if value.chars().any(char::is_control) {
-        return Err(Error::project(format!(
-            "{field} must not contain control characters"
-        )));
-    }
-    Ok(())
-}
-
-fn default_author() -> String {
-    let git_name = Command::new("git")
-        .args(["config", "user.name"])
-        .output()
-        .ok()
-        .filter(|output| output.status.success())
-        .and_then(|output| String::from_utf8(output.stdout).ok())
-        .map(|name| name.trim().to_owned())
-        .filter(|name| !name.is_empty());
-    git_name
-        .or_else(|| env::var("USERNAME").ok())
-        .or_else(|| env::var("USER").ok())
-        .unwrap_or_else(|| "Unknown".to_owned())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -280,12 +227,6 @@ mod tests {
             &fs::read(root.join("public/preview.png")).unwrap()[..8],
             b"\x89PNG\r\n\x1a\n"
         );
-    }
-
-    #[test]
-    fn derives_human_and_game_names() {
-        assert_eq!(display_name("connected-storage"), "Connected Storage");
-        assert_eq!(mod_id("connected-storage"), "ConnectedStorage");
     }
 
     #[test]
@@ -317,17 +258,8 @@ mod tests {
         fs::create_dir(&nonempty).unwrap();
         fs::write(nonempty.join("file"), "data").unwrap();
         assert!(ensure_empty_destination(&nonempty).is_err());
-        assert!(validate_id("").is_err());
-        assert!(validate_id("valid_ID2").is_ok());
         assert!(absolute(Path::new("relative")).unwrap().is_absolute());
         assert_eq!(absolute(temporary.path()).unwrap(), temporary.path());
-    }
-
-    #[test]
-    fn rejects_unsafe_metadata_text() {
-        assert!(validate_text("mod name", "").is_err());
-        assert!(validate_text("mod name", "bad\nname").is_err());
-        assert!(validate_text("author", "valid author").is_ok());
     }
 
     #[test]
