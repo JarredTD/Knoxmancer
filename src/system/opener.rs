@@ -68,6 +68,14 @@ mod tests {
         }
     }
 
+    struct FailingLauncher;
+
+    impl Launcher for FailingLauncher {
+        fn launch(&self, _program: &str, _path: &Path) -> std::io::Result<()> {
+            Err(std::io::ErrorKind::PermissionDenied.into())
+        }
+    }
+
     #[test]
     fn opens_existing_directories_and_rejects_missing_ones() {
         let temporary = tempdir().unwrap();
@@ -76,5 +84,13 @@ mod tests {
         assert_eq!(launcher.calls.borrow().len(), 1);
         assert_eq!(launcher.calls.borrow()[0].0, platform_program());
         assert!(open_with(&launcher, &temporary.path().join("missing")).is_err());
+        assert!(open_with(&FailingLauncher, temporary.path()).is_err());
+
+        let missing_program = format!("knoxmancer-missing-program-{}", std::process::id());
+        assert!(
+            SystemLauncher
+                .launch(&missing_program, temporary.path())
+                .is_err()
+        );
     }
 }

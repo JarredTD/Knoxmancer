@@ -231,6 +231,11 @@ fn doctor_reports_readiness_without_writing_artifacts() {
             .status
             .success()
     );
+    assert!(
+        km_with_config(&["config", "set", "author", "Doctor"], &config)
+            .status
+            .success()
+    );
 
     let doctor = km_with_config(&["--project", path(&project), "doctor"], &config);
     assert!(doctor.status.success());
@@ -297,6 +302,36 @@ fn manages_machine_specific_user_defaults() {
     let workshop = temporary.path().join("workshop");
     let project = temporary.path().join("managed-mod");
 
+    let relative_location = km_with_config(&["config", "show"], Path::new("config.toml"));
+    assert_eq!(relative_location.status.code(), Some(1));
+    assert!(
+        String::from_utf8(relative_location.stderr)
+            .unwrap()
+            .contains("must contain an absolute path")
+    );
+
+    let invalid_config = temporary.path().join("invalid.toml");
+    fs::write(&invalid_config, "unknown = true\n").unwrap();
+    assert_eq!(
+        km_with_config(&["config", "show"], &invalid_config)
+            .status
+            .code(),
+        Some(1)
+    );
+
+    assert_eq!(
+        km_with_config(&["config", "set", "mods-root", "relative"], &config)
+            .status
+            .code(),
+        Some(1)
+    );
+    assert_eq!(
+        km_with_config(&["config", "set", "author", "bad\nauthor"], &config)
+            .status
+            .code(),
+        Some(1)
+    );
+
     assert!(
         km_with_config(&["config", "show"], &config)
             .status
@@ -351,6 +386,16 @@ fn manages_machine_specific_user_defaults() {
 
     assert!(
         km_with_config(&["config", "unset", "author"], &config)
+            .status
+            .success()
+    );
+    assert!(
+        km_with_config(&["config", "unset", "mods-root"], &config)
+            .status
+            .success()
+    );
+    assert!(
+        km_with_config(&["config", "unset", "workshop-root"], &config)
             .status
             .success()
     );

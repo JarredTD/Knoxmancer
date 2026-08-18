@@ -158,7 +158,9 @@ mod tests {
         for source in [
             "unknown = true\n",
             "author = ''\n",
+            "author = \"bad\\nname\"\n",
             "mods_root = 'relative'\n",
+            "workshop_root = 'relative'\n",
         ] {
             fs::write(&path, source).unwrap();
             assert!(load_from(&path).is_err());

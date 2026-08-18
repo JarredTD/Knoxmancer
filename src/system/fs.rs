@@ -617,11 +617,21 @@ mod tests {
         filesystem.set_permissions(&file, permissions).unwrap();
         filesystem.remove_file(&file).unwrap();
 
+        let real_file = temporary.path().join("real-file");
+        fs::write(&real_file, "data").unwrap();
+        let permissions = real_file.metadata().unwrap().permissions();
+        RealFs.set_permissions(&real_file, permissions).unwrap();
+        RealFs.remove_file(&real_file).unwrap();
+
         #[cfg(windows)]
         {
             let directory = temporary.path().join("directory");
             fs::create_dir(&directory).unwrap();
             filesystem.remove_dir(&directory).unwrap();
+
+            let real_directory = temporary.path().join("real-directory");
+            fs::create_dir(&real_directory).unwrap();
+            RealFs.remove_dir(&real_directory).unwrap();
         }
     }
 
@@ -656,6 +666,11 @@ mod tests {
         fs::create_dir(&directory).unwrap();
         assert!(atomic_write(&directory, b"data").is_err());
         assert!(directory.is_dir());
+
+        assert!(atomic_write(Path::new(""), b"data").is_err());
+        let blocked_parent = temporary.path().join("blocked");
+        fs::write(&blocked_parent, "file").unwrap();
+        assert!(atomic_write(&blocked_parent.join("config.toml"), b"data").is_err());
     }
 
     #[test]
