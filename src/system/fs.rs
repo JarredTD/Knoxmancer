@@ -360,14 +360,34 @@ fn atomic_replace_with(
             "could not replace the directory",
         ));
     }
-    let cleanup_warning = remove_tree_if_exists_with(filesystem, &backup)
-        .err()
-        .map(|error| {
-            format!(
-                "replacement succeeded, but old backup {} could not be removed: {error}",
-                backup.display()
-            )
-        });
+    let mut warnings = Vec::new();
+    if let Err(error) = filesystem.sync_dir(parent) {
+        warnings.push(format!(
+            "replacement succeeded, but directory metadata for {} could not be flushed: {error}",
+            parent.display()
+        ));
+    }
+    let backup_removed = if backup.exists() {
+        match remove_tree_if_exists_with(filesystem, &backup) {
+            Ok(()) => true,
+            Err(error) => {
+                warnings.push(format!(
+                    "replacement succeeded, but old backup {} could not be removed: {error}",
+                    backup.display()
+                ));
+                false
+            }
+        }
+    } else {
+        false
+    };
+    if backup_removed && let Err(error) = filesystem.sync_dir(parent) {
+        warnings.push(format!(
+            "replacement succeeded, but cleanup metadata for {} could not be flushed: {error}",
+            parent.display()
+        ));
+    }
+    let cleanup_warning = (!warnings.is_empty()).then(|| warnings.join("; "));
     Ok(AtomicReplaceResult { cleanup_warning })
 }
 
@@ -683,6 +703,20 @@ mod tests {
             fs::read_to_string(destination.join("new.txt")).unwrap(),
             "new"
         );
+
+        let destination = temporary.path().join("durability-artifact");
+        let staging = temporary.path().join("durability-staging");
+        fs::create_dir(&destination).unwrap();
+        fs::create_dir(&staging).unwrap();
+        let filesystem = FaultFs::with_renames([RenameAction::Perform, RenameAction::Perform]);
+        filesystem.fail_sync.set(true);
+
+        let warning = atomic_replace_with(&filesystem, &staging, &destination)
+            .unwrap()
+            .cleanup_warning
+            .unwrap();
+        assert!(warning.contains("directory metadata"));
+        assert!(warning.contains("cleanup metadata"));
 
         let destination = temporary.path().join("move-failure-artifact");
         let staging = temporary.path().join("move-failure-staging");
