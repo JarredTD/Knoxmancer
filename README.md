@@ -33,6 +33,7 @@ This installs `knoxmancer` and its `km` alias.
 | `km config show/set/unset` | Manage machine-specific defaults |
 | `km completions <shell>` | Generate a shell completion script |
 | `km doctor` | Run read-only project and environment readiness checks |
+| `km open <target>` | Open an existing artifact or game-facing directory |
 
 Use `km install` while developing and testing in the game. Use `km stage` when
 the mod is ready for **Workshop > Create and update items**. `km package` only
@@ -108,6 +109,9 @@ km completions bash > km.bash
 
 `km doctor` performs full local and Workshop validation without creating or
 replacing artifacts.
+
+`km open` accepts `artifact`, `mods`, `package`, or `workshop` and opens a
+directory only after the corresponding workflow has created it.
 
 ## Output contract
 

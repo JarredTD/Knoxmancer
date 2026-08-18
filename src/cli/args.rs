@@ -103,6 +103,8 @@ pub enum Command {
     Completions(CompletionsArgs),
     /// Checks project and environment readiness without writing artifacts.
     Doctor(DoctorArgs),
+    /// Opens a resolved artifact or game-facing directory.
+    Open(OpenArgs),
 }
 
 #[derive(Debug, Args)]
@@ -244,3 +246,23 @@ impl From<CompletionShell> for clap_complete::Shell {
 #[derive(Debug, Args, Default)]
 /// Arguments for read-only environment and project diagnostics.
 pub struct DoctorArgs {}
+
+#[derive(Debug, Args)]
+/// Arguments for opening a resolved directory.
+pub struct OpenArgs {
+    /// Resolved directory to open.
+    pub target: OpenTarget,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+/// Artifact and game-facing directories understood by `km open`.
+pub enum OpenTarget {
+    /// Generated local development artifact.
+    Artifact,
+    /// Installed local mod directory.
+    Mods,
+    /// Generated Workshop upload package.
+    Package,
+    /// Project Zomboid Workshop staging directory.
+    Workshop,
+}

@@ -246,6 +246,28 @@ fn doctor_reports_readiness_without_writing_artifacts() {
 }
 
 #[test]
+fn open_rejects_targets_that_have_not_been_created() {
+    let temporary = tempdir().unwrap();
+    let config = temporary.path().join("config.toml");
+    let project = temporary.path().join("open-mod");
+    assert!(
+        km_with_config(&["new", path(&project)], &config)
+            .status
+            .success()
+    );
+
+    for target in ["artifact", "mods", "package", "workshop"] {
+        let output = km_with_config(&["--project", path(&project), "open", target], &config);
+        assert!(!output.status.success());
+        assert!(
+            String::from_utf8(output.stderr)
+                .unwrap()
+                .contains("does not exist yet")
+        );
+    }
+}
+
+#[test]
 fn reports_resolved_project_paths() {
     let temporary = tempdir().unwrap();
     let project = temporary.path().join("paths-mod");

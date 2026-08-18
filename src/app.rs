@@ -7,7 +7,9 @@ use crate::cli::Reporter;
 use clap::CommandFactory;
 
 use crate::cli::args::OutputFormat;
-use crate::cli::{Cli, Command, CompletionShell, ConfigArgs, ConfigCommand, ConfigKey, NewArgs};
+use crate::cli::{
+    Cli, Command, CompletionShell, ConfigArgs, ConfigCommand, ConfigKey, NewArgs, OpenTarget,
+};
 use crate::error::Result;
 use crate::project::validation::ValidationTarget;
 use crate::project::{Project, ValidatedProject, config, validation};
@@ -106,7 +108,25 @@ pub(crate) fn run(cli: Cli, reporter: &Reporter) -> Result<()> {
         Command::Config(args) => configure(args, reporter),
         Command::Completions(args) => completions(args.shell, quiet, format),
         Command::Doctor(_) => doctor(project_start.as_deref(), reporter),
+        Command::Open(args) => open(project_start.as_deref(), args.target, reporter),
     }
+}
+
+/// Opens one resolved directory in the platform file browser.
+fn open(start: Option<&std::path::Path>, target: OpenTarget, reporter: &Reporter) -> Result<()> {
+    let loaded = user_config::load()?;
+    let project = discover(start)?;
+    let validated = validation::check(&project, ValidationTarget::Playable)?;
+    let resolved = resolved_paths(&validated, &loaded.values)?;
+    let (label, path) = match target {
+        OpenTarget::Artifact => ("development artifact", resolved.development),
+        OpenTarget::Mods => ("local installation", resolved.local),
+        OpenTarget::Package => ("Workshop package", resolved.workshop_artifact),
+        OpenTarget::Workshop => ("Workshop staging", resolved.workshop_staging),
+    };
+    crate::system::opener::open(&path)?;
+    reporter.status(&format!("Opened {label}: {}", path.display()));
+    Ok(())
 }
 
 /// Runs full read-only project and environment readiness checks.
