@@ -28,10 +28,11 @@ fn scaffolds_checks_builds_packages_installs_and_cleans() {
     );
     assert!(km(&["--project", path(&project), "check"]).status.success());
     assert!(km(&["--project", path(&project), "build"]).status.success());
+    let release = km(&["--project", path(&project), "build", "--release"]);
     assert!(
-        km(&["--project", path(&project), "build", "--release"])
-            .status
-            .success()
+        release.status.success(),
+        "{}",
+        String::from_utf8_lossy(&release.stderr)
     );
     assert!(
         km(&["--project", path(&project), "package"])
@@ -177,7 +178,7 @@ fn reports_validation_failures_and_recovers_after_correction() {
 }
 
 #[test]
-fn supports_minification_and_replacing_existing_artifacts() {
+fn preserves_sources_and_replaces_existing_artifacts() {
     let temporary = tempdir().unwrap();
     let project = temporary.path().join("release-mod");
     let mods = temporary.path().join("mods");
@@ -189,25 +190,28 @@ fn supports_minification_and_replacing_existing_artifacts() {
     let lua = project.join("src/42/media/lua/client/example.lua");
     fs::write(&lua, "return true\n").unwrap();
 
-    let manifest = project.join("knoxmancer.toml");
-    let mut source = fs::read_to_string(&manifest).unwrap();
-    #[cfg(windows)]
-    source.push_str(
-        "\n[release.minify]\ncommand = \"cmd\"\nargs = [\"/c\", \"copy\", \"/y\", \"{input}\", \"{output}\"]\n",
-    );
-    #[cfg(unix)]
-    source.push_str("\n[release.minify]\ncommand = \"cp\"\nargs = [\"{input}\", \"{output}\"]\n");
-    fs::write(&manifest, source).unwrap();
-
+    let release = km(&["--project", path(&project), "build", "--release"]);
     assert!(
-        km(&["--project", path(&project), "build", "--release"])
-            .status
-            .success()
+        release.status.success(),
+        "{}",
+        String::from_utf8_lossy(&release.stderr)
     );
     assert!(
         project
             .join("dist/release/ReleaseMod/42/media/lua/client/example.lua")
             .is_file()
+    );
+    assert!(
+        km(&["--project", path(&project), "package"])
+            .status
+            .success()
+    );
+    assert_eq!(
+        fs::read_to_string(project.join(
+            "dist/workshop/ReleaseMod/Contents/mods/ReleaseMod/42/media/lua/client/example.lua",
+        ),)
+        .unwrap(),
+        "return true\n"
     );
     for _ in 0..2 {
         assert!(

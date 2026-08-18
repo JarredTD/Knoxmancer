@@ -102,13 +102,7 @@ fn build_validated(
 ) -> Result<BuildArtifact> {
     reporter.verbose("Staging artifact with atomic replacement");
     let artifact = build::build(validated, profile)?;
-    for line in &artifact.tool_output {
-        reporter.status(line);
-    }
     report_warnings(&artifact.warnings, reporter);
-    if profile == BuildProfile::Release && validated.project.config.release.minify.is_some() {
-        reporter.status(&format!("Minified {} Lua files", artifact.minified_files));
-    }
     reporter.status(&format!(
         "Built {} artifact: {}",
         artifact.profile.name(),

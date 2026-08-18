@@ -1,14 +1,11 @@
 //! Development and release artifact construction and installation.
 
-mod minify;
-
 use crate::error::{Error, Result};
 use crate::project::{Project, ProjectLayout, ValidatedProject};
 use crate::system::environment::home_directory;
 use crate::system::fs::{
     atomic_replace, copy_file, copy_tree, remove_tree_if_exists, staging_path,
 };
-use minify::minify_lua;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -32,8 +29,6 @@ pub struct BuildArtifact {
     pub path: PathBuf,
     pub mod_id: String,
     pub profile: BuildProfile,
-    pub minified_files: usize,
-    pub tool_output: Vec<String>,
     pub warnings: Vec<String>,
 }
 
@@ -86,8 +81,6 @@ pub fn build(validated: &ValidatedProject<'_>, profile: BuildProfile) -> Result<
 
     remove_tree_if_exists(&staging)?;
     fs::create_dir_all(&staging).map_err(Error::io)?;
-    let mut minified_files = 0;
-    let mut tool_output = Vec::new();
     let result = (|| {
         copy_mod_source(project, &staging)?;
         copy_public_assets(validated, &staging)?;
@@ -96,13 +89,6 @@ pub fn build(validated: &ValidatedProject<'_>, profile: BuildProfile) -> Result<
             if source.is_file() {
                 copy_file(&source, &staging.join(relative))?;
             }
-        }
-        if profile == BuildProfile::Release
-            && let Some(minifier) = &project.config.release.minify
-        {
-            let result = minify_lua(&staging, minifier)?;
-            minified_files = result.files;
-            tool_output = result.output;
         }
         atomic_replace(&staging, &destination)
     })();
@@ -114,8 +100,6 @@ pub fn build(validated: &ValidatedProject<'_>, profile: BuildProfile) -> Result<
         path: destination,
         mod_id: metadata.id.clone(),
         profile,
-        minified_files,
-        tool_output,
         warnings: replacement.cleanup_warning.into_iter().collect(),
     })
 }

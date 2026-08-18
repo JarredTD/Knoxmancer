@@ -99,7 +99,6 @@ fn write_scaffold(root: &Path, name: &str, id: &str, author: &str, build: &str) 
     let config = Config {
         release: crate::project::config::ReleaseConfig {
             include: vec![PathBuf::from("CHANGELOG.md"), PathBuf::from("LICENSE")],
-            minify: None,
         },
         ..Config::default()
     };

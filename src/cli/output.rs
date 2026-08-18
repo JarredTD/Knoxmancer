@@ -85,7 +85,6 @@ fn kind_name(kind: ErrorKind) -> &'static str {
         ErrorKind::Usage => "usage",
         ErrorKind::Project => "project",
         ErrorKind::Validation => "validation",
-        ErrorKind::Tool => "tool",
         ErrorKind::Io => "io",
     }
 }
@@ -99,7 +98,6 @@ mod tests {
         assert_eq!(kind_name(ErrorKind::Usage), "usage");
         assert_eq!(kind_name(ErrorKind::Project), "project");
         assert_eq!(kind_name(ErrorKind::Validation), "validation");
-        assert_eq!(kind_name(ErrorKind::Tool), "tool");
         assert_eq!(kind_name(ErrorKind::Io), "io");
     }
 }

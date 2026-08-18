@@ -7,8 +7,6 @@ use std::process::Command;
 pub(crate) fn doctor() -> Vec<String> {
     let mut lines = vec!["Knoxmancer environment".to_owned()];
     lines.push(report_command("git", &["--version"]));
-    lines.push(report_command("lua5.1", &["-v"]));
-    lines.push(report_command("prometheus-lua", &["--version"]));
 
     if let Some(home) = home_directory() {
         let mods = home.join("Zomboid/mods");
@@ -21,10 +19,6 @@ pub(crate) fn doctor() -> Vec<String> {
         lines.push("Local mods: home directory unavailable".to_owned());
     }
     lines
-}
-
-pub(crate) fn command_exists(command: &str) -> bool {
-    Command::new(command).arg("--version").output().is_ok()
 }
 
 pub(crate) fn home_directory() -> Option<PathBuf> {

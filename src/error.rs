@@ -16,7 +16,6 @@ pub enum ErrorKind {
     Usage,
     Project,
     Validation,
-    Tool,
     Io,
 }
 
@@ -52,10 +51,6 @@ impl Error {
             exit_code: 1,
             diagnostics: Some(diagnostics),
         }
-    }
-
-    pub fn tool(message: impl Into<String>) -> Self {
-        Self::new(ErrorKind::Tool, message)
     }
 
     pub fn io(error: io::Error) -> Self {

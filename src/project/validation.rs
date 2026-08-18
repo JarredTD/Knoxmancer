@@ -10,7 +10,6 @@ use super::layout::ProjectLayout;
 use super::metadata::{ModMetadata, read as read_metadata};
 use super::preview;
 use crate::error::{Error, Result};
-use crate::system::environment::command_exists;
 
 const PREVIEW_MAX_BYTES: u64 = 1_000_000;
 
@@ -206,21 +205,13 @@ fn validate_release(project: &Project, problems: &mut Vec<Diagnostic>) {
             ));
         }
     }
-    if let Some(minify) = &project.config.release.minify
-        && !command_exists(&minify.command)
-    {
-        problems.push(Diagnostic::new(
-            "release.minifier.missing",
-            format!("release minifier `{}` was not found", minify.command),
-        ));
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::project::config::Config;
-    use crate::system::environment::{command_exists, home_directory};
+    use crate::system::environment::home_directory;
     use std::path::PathBuf;
     use tempfile::tempdir;
 
@@ -314,20 +305,11 @@ mod tests {
         );
 
         value.config.release.include.push(PathBuf::from("MISSING"));
-        value.config.release.minify = Some(crate::project::config::MinifyConfig {
-            command: "knoxmancer-command-that-does-not-exist".to_owned(),
-            args: Vec::new(),
-        });
         validate_release(&value, &mut problems);
         assert!(
             problems
                 .iter()
                 .any(|problem| problem.to_string().contains("release file is missing"))
-        );
-        assert!(
-            problems
-                .iter()
-                .any(|problem| problem.to_string().contains("was not found"))
         );
     }
 
@@ -339,6 +321,5 @@ mod tests {
         fs::remove_file(temporary.path().join("public/description.md")).unwrap();
         assert!(check(&value, false).is_err());
         assert!(home_directory().is_some());
-        assert!(!command_exists("knoxmancer-command-that-does-not-exist"));
     }
 }

@@ -53,14 +53,6 @@ impl Default for PathsConfig {
 #[serde(default)]
 pub struct ReleaseConfig {
     pub include: Vec<PathBuf>,
-    pub minify: Option<MinifyConfig>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct MinifyConfig {
-    pub command: String,
-    #[serde(default)]
-    pub args: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
