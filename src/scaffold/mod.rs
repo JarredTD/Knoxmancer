@@ -111,25 +111,8 @@ fn write_scaffold(root: &Path, name: &str, id: &str, author: &str, build: &str) 
     write_manifest(root, &config)?;
 
     let source = root.join("src");
-    let media = source.join("media");
-    for directory in [
-        source.join("client"),
-        source.join("server"),
-        source.join("shared"),
-        media.join("scripts"),
-        media.join("textures"),
-        root.join("public"),
-    ] {
+    for directory in [&source, &root.join("public")] {
         fs::create_dir_all(directory).map_err(Error::io)?;
-    }
-    for keep in [
-        source.join("client/.gitkeep"),
-        source.join("server/.gitkeep"),
-        source.join("shared/.gitkeep"),
-        media.join("scripts/.gitkeep"),
-        media.join("textures/.gitkeep"),
-    ] {
-        fs::write(keep, []).map_err(Error::io)?;
     }
 
     let values = [
@@ -220,9 +203,8 @@ mod tests {
         write_scaffold(&root, "Example Mod", "ExampleMod", "Author", "42").unwrap();
         assert!(root.join("knoxmancer.toml").is_file());
         assert!(root.join("src/mod.info").is_file());
-        assert!(root.join("src/client/.gitkeep").is_file());
-        assert!(root.join("src/shared/.gitkeep").is_file());
-        assert!(root.join("src/server/.gitkeep").is_file());
+        assert!(!root.join("src/client").exists());
+        assert!(!root.join("src/media").exists());
         assert!(root.join("public/preview.png").metadata().unwrap().len() > 24);
         assert!(!root.join("LICENSE").exists());
         assert_eq!(

@@ -75,14 +75,7 @@ fn scaffolds_checks_builds_packages_installs_and_cleans() {
         .success()
     );
 
-    let playable_files = BTreeSet::from([
-        "42/media/lua/client/.gitkeep".to_owned(),
-        "42/media/lua/server/.gitkeep".to_owned(),
-        "42/media/lua/shared/.gitkeep".to_owned(),
-        "42/media/scripts/.gitkeep".to_owned(),
-        "42/media/textures/.gitkeep".to_owned(),
-        "42/mod.info".to_owned(),
-    ]);
+    let playable_files = BTreeSet::from(["42/mod.info".to_owned()]);
     assert_eq!(
         files_below(&project.join("dist/dev/ExampleMod")),
         playable_files
@@ -247,6 +240,9 @@ fn preserves_sources_and_replaces_existing_artifacts() {
         .unwrap()
         .replace("include = []", "include = [\"CHANGELOG.md\", \"LICENSE\"]");
     fs::write(&manifest, configured).unwrap();
+    for directory in ["src/client", "src/shared", "src/media"] {
+        fs::create_dir_all(project.join(directory)).unwrap();
+    }
     let lua = project.join("src/client/example.lua");
     fs::write(&lua, "return true\n").unwrap();
     fs::write(project.join("src/shared/example.lua"), "return 'shared'\n").unwrap();

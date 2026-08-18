@@ -26,6 +26,9 @@ pub(crate) fn copy_tree(source: &Path, destination: &Path) -> Result<()> {
     fs::create_dir_all(destination).map_err(Error::io)?;
     for entry in WalkDir::new(source).follow_links(false) {
         let entry = entry.map_err(|error| Error::io(std::io::Error::other(error)))?;
+        if entry.file_type().is_file() && is_artifact_junk(entry.path()) {
+            continue;
+        }
         let relative = entry
             .path()
             .strip_prefix(source)
@@ -44,6 +47,21 @@ pub(crate) fn copy_tree(source: &Path, destination: &Path) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// Identifies common repository and operating-system files that do not belong in artifacts.
+fn is_artifact_junk(path: &Path) -> bool {
+    let name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or_default();
+    name.eq_ignore_ascii_case(".gitkeep")
+        || name.eq_ignore_ascii_case(".DS_Store")
+        || name.eq_ignore_ascii_case("Thumbs.db")
+        || path
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("tmp"))
 }
 
 /// Copies one file after creating its destination directory.
@@ -242,5 +260,25 @@ mod tests {
         remove_tree_if_exists(&tree).unwrap();
         assert!(!tree.exists());
         remove_tree_if_exists(&tree).unwrap();
+    }
+
+    #[test]
+    fn omits_common_junk_from_copied_artifacts() {
+        let temporary = tempdir().unwrap();
+        let source = temporary.path().join("source");
+        let destination = temporary.path().join("destination");
+        fs::create_dir(&source).unwrap();
+        for name in [".gitkeep", ".DS_Store", "Thumbs.db", "scratch.tmp"] {
+            fs::write(source.join(name), "junk").unwrap();
+        }
+        fs::write(source.join("mod.info"), "kept").unwrap();
+
+        copy_tree(&source, &destination).unwrap();
+
+        assert_eq!(
+            fs::read_to_string(destination.join("mod.info")).unwrap(),
+            "kept"
+        );
+        assert_eq!(destination.read_dir().unwrap().count(), 1);
     }
 }
