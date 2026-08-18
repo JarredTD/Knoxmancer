@@ -43,4 +43,10 @@ mod tests {
         );
         assert_eq!(rendered, "name={{id}} id=Example keep={{UNKNOWN}}");
     }
+
+    #[test]
+    fn generated_workflow_installs_knoxmancer() {
+        assert!(CI.contains("cargo install knoxmancer --locked"));
+        assert!(!CI.contains("--version"));
+    }
 }

@@ -2,6 +2,7 @@
 name = "knoxmancer"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.85"
 description = "Project Zomboid mod development CLI"
 license = "AGPL-3.0"
 
