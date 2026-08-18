@@ -80,6 +80,42 @@ and installs do not require Workshop files.
 `km stage --root <path>` overrides the Workshop projects directory.
 `km install --root <path>` similarly overrides the local mods directory.
 
+## Output contract
+
+Successful command data and status messages are written to standard output.
+Warnings and errors are written to standard error. `--quiet` suppresses successful
+output but continues to report warnings and errors.
+
+Pass `--format json` to emit newline-delimited JSON objects. Every object has a
+stable `type` field (`status`, `path`, `warning`, or `error`). Path objects also
+contain `name` and `path`; error objects contain `kind`, `message`, and
+`exit_code`. Help remains human-readable. Exit code `0` means success, `1` means
+a project, validation, environment, or filesystem failure, and `2` means invalid
+command-line usage.
+
+```sh
+km --format json paths
+km --quiet check
+```
+
+## Validation rules
+
+Knoxmancer reads `name`, `id`, and `modversion` from `mod.info`. These identity
+fields must each appear once; unrelated game metadata is left alone and may use
+repeated keys. `modversion` uses `MAJOR.MINOR.PATCH`, and IDs use ASCII letters,
+digits, and underscores.
+
+Workshop titles are trimmed and limited to 128 UTF-8 bytes. Tags are
+semicolon-delimited, trimmed, non-empty, unique ignoring ASCII case, limited to
+255 UTF-8 bytes each, and may not contain control characters or commas. Every
+configured game build requires its matching `Build N` tag.
+
+Workshop descriptions support CommonMark paragraphs, headings one through three,
+bold and italic text, inline and fenced code, non-nested unordered lists,
+HTTP(S) links, horizontal rules, and line breaks. Unsupported constructs fail
+validation instead of being silently rewritten. Preview images are fully decoded
+as PNG data and must be 256x256 and under 1000 KB.
+
 ## License
 
 Knoxmancer is licensed under the [GNU Affero General Public License v3](LICENSE).
