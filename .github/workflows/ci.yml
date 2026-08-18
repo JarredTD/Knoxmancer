@@ -17,17 +17,18 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.85.0
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@1.97.1
         with:
           components: clippy,rustfmt
       - uses: taiki-e/install-action@v2
         with:
-          tool: cargo-llvm-cov@0.9.0
+          tool: cargo-llvm-cov@0.9.0,cargo-audit@0.22.2
       - run: cargo fmt --check
-      - run: cargo clippy --all-targets --all-features -- -D warnings
-      - run: RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --all-features
-      - run: cargo llvm-cov --all-features --workspace --fail-under-regions 90 --fail-under-functions 90 --fail-under-lines 90
+      - run: cargo clippy --locked --all-targets --all-features -- -D warnings
+      - run: RUSTDOCFLAGS="-D warnings" cargo doc --locked --no-deps --all-features --document-private-items
+      - run: cargo llvm-cov --locked --all-features --workspace --fail-under-regions 90 --fail-under-functions 90 --fail-under-lines 90
+      - run: cargo audit
 
   test:
     name: Test (${{ matrix.os }})
@@ -38,6 +39,6 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.85.0
-      - run: cargo test --all-features
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@1.97.1
+      - run: cargo test --locked --all-features
