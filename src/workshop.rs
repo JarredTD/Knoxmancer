@@ -4,12 +4,13 @@ use std::fs;
 
 use regex::Regex;
 
-use crate::artifact::{BuildArtifact, output_root};
+use crate::artifact::BuildArtifact;
 use crate::config::Project;
 use crate::error::{Error, Result};
 use crate::filesystem::{
     atomic_replace, copy_file, copy_tree, remove_tree_if_exists, staging_path,
 };
+use crate::layout::ProjectLayout;
 use crate::metadata::ModMetadata;
 use crate::validation::ValidatedProject;
 
@@ -23,7 +24,7 @@ pub(crate) fn package(
 ) -> Result<std::path::PathBuf> {
     let project = validated.project;
     let metadata = &validated.metadata;
-    let output = output_root(project)?;
+    let output = validated.layout.output_root()?;
     let destination = output.join("workshop").join(&metadata.id);
     let staging = staging_path(
         destination.parent().expect("workshop directory"),
@@ -49,10 +50,11 @@ pub(crate) fn package(
             }
         }
         for included in &project.config.release.include {
-            let source = release.path.join(included);
+            let (relative, _) = validated.layout.included(included)?;
+            let source = release.path.join(&relative);
             if source.is_file() {
-                let file_name = included.file_name().ok_or_else(|| {
-                    Error::project(format!("invalid included path: {}", included.display()))
+                let file_name = relative.file_name().ok_or_else(|| {
+                    Error::project(format!("invalid included path: {}", relative.display()))
                 })?;
                 if file_name == "LICENSE" {
                     copy_file(&source, &mod_root.join(file_name))?;
@@ -61,7 +63,7 @@ pub(crate) fn package(
                 }
             }
         }
-        let public = project.root.join(&project.config.paths.public);
+        let public = validated.layout.public_root()?;
         copy_file(&public.join("preview.png"), &staging.join("preview.png"))?;
         fs::write(staging.join("workshop.txt"), render(project, metadata)?).map_err(Error::io)?;
         atomic_replace(&staging, &destination)
@@ -74,7 +76,7 @@ pub(crate) fn package(
 }
 
 pub(crate) fn render(project: &Project, metadata: &ModMetadata) -> Result<String> {
-    let public = project.root.join(&project.config.paths.public);
+    let public = ProjectLayout::new(project)?.public_root()?;
     let description_path = public.join("description.md");
     let description_template = fs::read_to_string(&description_path).map_err(Error::io)?;
     let marker_count = description_template.matches(CHANGELOG_MARKER).count();

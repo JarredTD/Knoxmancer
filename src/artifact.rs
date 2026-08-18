@@ -7,7 +7,7 @@ use crate::filesystem::{
 use crate::minify::minify_lua;
 use crate::validation::ValidatedProject;
 use std::fs;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BuildProfile {
@@ -41,7 +41,7 @@ pub struct CleanResult {
 pub fn build(validated: &ValidatedProject<'_>, profile: BuildProfile) -> Result<BuildArtifact> {
     let project = validated.project;
     let metadata = &validated.metadata;
-    let output = output_root(project)?;
+    let output = validated.layout.output_root()?;
     let destination = output.join(profile.name()).join(&metadata.id);
     let staging = staging_path(
         destination.parent().expect("profile directory"),
@@ -53,11 +53,11 @@ pub fn build(validated: &ValidatedProject<'_>, profile: BuildProfile) -> Result<
     let mut minified_files = 0;
     let result = (|| {
         copy_mod_source(project, &staging)?;
-        copy_public_assets(project, &staging)?;
+        copy_public_assets(validated, &staging)?;
         for included in &project.config.release.include {
-            let source = project.root.join(included);
+            let (relative, source) = validated.layout.included(included)?;
             if source.is_file() {
-                copy_file(&source, &staging.join(included))?;
+                copy_file(&source, &staging.join(relative))?;
             }
         }
         if profile == BuildProfile::Release
@@ -103,7 +103,7 @@ pub fn install(artifact: &BuildArtifact, configured_root: Option<&Path>) -> Resu
 }
 
 pub fn clean(project: &Project) -> Result<CleanResult> {
-    let output = output_root(project)?;
+    let output = crate::layout::ProjectLayout::new(project)?.output_root()?;
     let removed = output.exists();
     if removed {
         remove_tree_if_exists(&output)?;
@@ -114,31 +114,8 @@ pub fn clean(project: &Project) -> Result<CleanResult> {
     })
 }
 
-pub(crate) fn output_root(project: &Project) -> Result<PathBuf> {
-    let configured = &project.config.paths.output;
-    if configured.is_absolute()
-        || configured
-            .components()
-            .any(|component| matches!(component, Component::ParentDir))
-    {
-        return Err(Error::project(
-            "paths.output must be a relative path without parent traversal",
-        ));
-    }
-    let output = project.root.join(configured);
-    let source = project.root.join(&project.config.paths.source);
-    let public = project.root.join(&project.config.paths.public);
-    if output == project.root || output.starts_with(&source) || output.starts_with(&public) {
-        return Err(Error::project(format!(
-            "unsafe output directory: {}",
-            output.display()
-        )));
-    }
-    Ok(output)
-}
-
 fn copy_mod_source(project: &Project, destination: &Path) -> Result<()> {
-    let source_root = project.root.join(&project.config.paths.source);
+    let source_root = crate::layout::ProjectLayout::new(project)?.source_root()?;
     for directory in project
         .config
         .project
@@ -155,8 +132,8 @@ fn copy_mod_source(project: &Project, destination: &Path) -> Result<()> {
     Ok(())
 }
 
-fn copy_public_assets(project: &Project, destination: &Path) -> Result<()> {
-    let public = project.root.join(&project.config.paths.public);
+fn copy_public_assets(validated: &ValidatedProject<'_>, destination: &Path) -> Result<()> {
+    let public = validated.layout.public_root()?;
     for name in ["preview.png", "workshop.txt"] {
         copy_file(&public.join(name), &destination.join(name))?;
     }
@@ -202,16 +179,22 @@ mod tests {
     fn validates_output_paths() {
         let temporary = tempdir().unwrap();
         let mut value = project(temporary.path());
-        assert_eq!(output_root(&value).unwrap(), temporary.path().join("dist"));
+        assert_eq!(
+            crate::layout::ProjectLayout::new(&value)
+                .unwrap()
+                .output_root()
+                .unwrap(),
+            temporary.path().join("dist")
+        );
 
         value.config.paths.output = PathBuf::from("../outside");
-        assert!(output_root(&value).is_err());
+        assert!(crate::layout::ProjectLayout::new(&value).is_err());
         value.config.paths.output = temporary.path().join("absolute");
-        assert!(output_root(&value).is_err());
+        assert!(crate::layout::ProjectLayout::new(&value).is_err());
         value.config.paths.output = PathBuf::from("src/generated");
-        assert!(output_root(&value).is_err());
+        assert!(crate::layout::ProjectLayout::new(&value).is_err());
         value.config.paths.output = PathBuf::new();
-        assert!(output_root(&value).is_err());
+        assert!(crate::layout::ProjectLayout::new(&value).is_err());
     }
 
     #[test]

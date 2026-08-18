@@ -7,6 +7,7 @@ use walkdir::WalkDir;
 use crate::config::Project;
 use crate::environment::command_exists;
 use crate::error::{Error, Result};
+use crate::layout::ProjectLayout;
 use crate::metadata::{ModMetadata, read as read_metadata};
 
 const PREVIEW_MAX_BYTES: u64 = 1_000_000;
@@ -15,12 +16,14 @@ const PREVIEW_MAX_BYTES: u64 = 1_000_000;
 #[derive(Debug)]
 pub struct ValidatedProject<'a> {
     pub project: &'a Project,
+    pub layout: ProjectLayout<'a>,
     pub metadata: ModMetadata,
 }
 
 pub fn check(project: &Project, release: bool) -> Result<ValidatedProject<'_>> {
+    let layout = ProjectLayout::new(project)?;
     let mut problems = Vec::new();
-    let source_root = project.root.join(&project.config.paths.source);
+    let source_root = layout.source_root()?;
     let mut metadata = Vec::new();
 
     if project.config.project.builds.is_empty() {
@@ -66,6 +69,7 @@ pub fn check(project: &Project, release: bool) -> Result<ValidatedProject<'_>> {
         .ok_or_else(|| Error::validation("no mod metadata was found"))?;
     Ok(ValidatedProject {
         project,
+        layout,
         metadata: result,
     })
 }
@@ -93,7 +97,9 @@ fn validate_changelog(root: &Path, version: &str, problems: &mut Vec<String>) {
 }
 
 fn validate_public(project: &Project, problems: &mut Vec<String>) {
-    let public = project.root.join(&project.config.paths.public);
+    let public = ProjectLayout::new(project)
+        .and_then(ProjectLayout::public_root)
+        .expect("project layout was validated before public assets");
     for name in ["description.md", "preview.png", "workshop.txt"] {
         let path = public.join(name);
         if !path.is_file() {
@@ -152,7 +158,10 @@ fn validate_translations(source_root: &Path, problems: &mut Vec<String>) {
 
 fn validate_release(project: &Project, problems: &mut Vec<String>) {
     for included in &project.config.release.include {
-        let path = project.root.join(included);
+        let path = ProjectLayout::new(project)
+            .and_then(|layout| layout.included(included))
+            .map(|(_, source)| source)
+            .expect("project layout was validated before release inputs");
         if !path.is_file() {
             problems.push(format!("{}: release file is missing", path.display()));
         }

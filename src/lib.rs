@@ -9,6 +9,7 @@ mod config;
 mod environment;
 mod error;
 mod filesystem;
+mod layout;
 mod metadata;
 mod minify;
 mod output;
