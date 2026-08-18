@@ -2,6 +2,7 @@ use serde::Serialize;
 use std::io::IsTerminal;
 
 use crate::cli::{OutputFormat, OutputOptions};
+use crate::diagnostic::Diagnostic;
 use crate::error::{Error, ErrorKind};
 
 pub const JSON_SCHEMA_VERSION: u32 = 1;
@@ -16,6 +17,8 @@ struct ErrorEvent<'a> {
     status: &'static str,
     kind: &'static str,
     message: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    diagnostics: Option<&'a [Diagnostic]>,
 }
 
 impl Reporter {
@@ -67,6 +70,7 @@ impl Reporter {
                     status: "error",
                     kind: kind_name(error.kind()),
                     message: error.message(),
+                    diagnostics: error.diagnostics(),
                 })
                 .expect("error event is serializable")
             ),

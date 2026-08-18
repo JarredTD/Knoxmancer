@@ -74,16 +74,17 @@ pub(crate) fn atomic_replace(staging: &Path, destination: &Path) -> Result<Atomi
         fs::rename(destination, &backup).map_err(Error::io)?;
     }
     if let Err(error) = fs::rename(staging, destination) {
-        if backup.exists() && !destination.exists() {
-            if let Err(rollback) = fs::rename(&backup, destination) {
-                return Err(Error::io(std::io::Error::new(
-                    error.kind(),
-                    format!(
-                        "could not install {}: {error}; rollback also failed: {rollback}",
-                        destination.display()
-                    ),
-                )));
-            }
+        if backup.exists()
+            && !destination.exists()
+            && let Err(rollback) = fs::rename(&backup, destination)
+        {
+            return Err(Error::io(std::io::Error::new(
+                error.kind(),
+                format!(
+                    "could not install {}: {error}; rollback also failed: {rollback}",
+                    destination.display()
+                ),
+            )));
         }
         return Err(Error::io(error));
     }

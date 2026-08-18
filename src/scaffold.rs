@@ -1,11 +1,11 @@
 use std::env;
 use std::fs;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use crate::config::{Config, MANIFEST_NAME};
 use crate::error::{Error, Result};
+use crate::preview;
 use crate::templates;
 
 const INITIAL_VERSION: &str = "0.1.0";
@@ -38,6 +38,8 @@ pub fn new_project(options: &NewProjectOptions) -> Result<NewProjectResult> {
     let id = options.id.clone().unwrap_or_else(|| mod_id(slug));
     validate_id(&id)?;
     let author = options.author.clone().unwrap_or_else(default_author);
+    validate_text("mod name", &name)?;
+    validate_text("author", &author)?;
 
     fs::create_dir_all(&root).map_err(Error::io)?;
     if let Err(error) = write_scaffold(&root, &name, &id, &author, &options.build) {
@@ -160,7 +162,7 @@ fn write_scaffold(root: &Path, name: &str, id: &str, author: &str, build: &str) 
         templates::render(templates::WORKSHOP, &values),
     )
     .map_err(Error::io)?;
-    write_preview(&root.join("public/preview.png"))?;
+    fs::write(root.join("public/preview.png"), preview::generate(256, 256)).map_err(Error::io)?;
     fs::write(root.join("tests/run.lua"), templates::TEST_RUNNER).map_err(Error::io)?;
     fs::write(root.join(".gitignore"), templates::GITIGNORE).map_err(Error::io)?;
     fs::write(root.join(".github/workflows/ci.yml"), templates::CI).map_err(Error::io)?;
@@ -231,6 +233,18 @@ fn validate_id(id: &str) -> Result<()> {
     Ok(())
 }
 
+fn validate_text(field: &str, value: &str) -> Result<()> {
+    if value.trim().is_empty() {
+        return Err(Error::project(format!("{field} must not be empty")));
+    }
+    if value.chars().any(char::is_control) {
+        return Err(Error::project(format!(
+            "{field} must not contain control characters"
+        )));
+    }
+    Ok(())
+}
+
 fn default_author() -> String {
     let git_name = Command::new("git")
         .args(["config", "user.name"])
@@ -244,74 +258,6 @@ fn default_author() -> String {
         .or_else(|| env::var("USERNAME").ok())
         .or_else(|| env::var("USER").ok())
         .unwrap_or_else(|| "Unknown".to_owned())
-}
-
-fn write_preview(path: &Path) -> Result<()> {
-    let mut raw = Vec::with_capacity(256 * (1 + 256 * 4));
-    let mut row = Vec::with_capacity(1 + 256 * 4);
-    row.push(0);
-    for _ in 0..256 {
-        row.extend_from_slice(&[44, 48, 46, 255]);
-    }
-    for _ in 0..256 {
-        raw.extend_from_slice(&row);
-    }
-
-    let mut compressed = vec![0x78, 0x01];
-    let mut remaining = raw.as_slice();
-    while !remaining.is_empty() {
-        let length = remaining.len().min(65_535);
-        let final_block = length == remaining.len();
-        compressed.push(u8::from(final_block));
-        compressed.extend_from_slice(&(length as u16).to_le_bytes());
-        compressed.extend_from_slice(&(!(length as u16)).to_le_bytes());
-        compressed.extend_from_slice(&remaining[..length]);
-        remaining = &remaining[length..];
-    }
-    compressed.extend_from_slice(&adler32(&raw).to_be_bytes());
-
-    let mut png = Vec::new();
-    png.extend_from_slice(b"\x89PNG\r\n\x1a\n");
-    let mut header = Vec::new();
-    header.extend_from_slice(&256_u32.to_be_bytes());
-    header.extend_from_slice(&256_u32.to_be_bytes());
-    header.extend_from_slice(&[8, 6, 0, 0, 0]);
-    write_chunk(&mut png, b"IHDR", &header);
-    write_chunk(&mut png, b"IDAT", &compressed);
-    write_chunk(&mut png, b"IEND", &[]);
-
-    let mut file = fs::File::create(path).map_err(Error::io)?;
-    file.write_all(&png).map_err(Error::io)
-}
-
-fn write_chunk(output: &mut Vec<u8>, kind: &[u8; 4], data: &[u8]) {
-    output.extend_from_slice(&(data.len() as u32).to_be_bytes());
-    output.extend_from_slice(kind);
-    output.extend_from_slice(data);
-    let mut checksum_data = Vec::with_capacity(kind.len() + data.len());
-    checksum_data.extend_from_slice(kind);
-    checksum_data.extend_from_slice(data);
-    output.extend_from_slice(&crc32(&checksum_data).to_be_bytes());
-}
-
-fn crc32(data: &[u8]) -> u32 {
-    let mut crc = u32::MAX;
-    for byte in data {
-        crc ^= u32::from(*byte);
-        for _ in 0..8 {
-            crc = (crc >> 1) ^ (0xedb8_8320 & (0_u32.wrapping_sub(crc & 1)));
-        }
-    }
-    !crc
-}
-
-fn adler32(data: &[u8]) -> u32 {
-    let (mut a, mut b) = (1_u32, 0_u32);
-    for byte in data {
-        a = (a + u32::from(*byte)) % 65_521;
-        b = (b + a) % 65_521;
-    }
-    (b << 16) | a
 }
 
 #[cfg(test)]
@@ -375,6 +321,13 @@ mod tests {
         assert!(validate_id("valid_ID2").is_ok());
         assert!(absolute(Path::new("relative")).unwrap().is_absolute());
         assert_eq!(absolute(temporary.path()).unwrap(), temporary.path());
+    }
+
+    #[test]
+    fn rejects_unsafe_metadata_text() {
+        assert!(validate_text("mod name", "").is_err());
+        assert!(validate_text("mod name", "bad\nname").is_err());
+        assert!(validate_text("author", "valid author").is_ok());
     }
 
     #[test]

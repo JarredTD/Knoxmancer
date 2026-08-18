@@ -5,10 +5,12 @@ use regex::Regex;
 use walkdir::WalkDir;
 
 use crate::config::Project;
+use crate::diagnostic::Diagnostic;
 use crate::environment::command_exists;
 use crate::error::{Error, Result};
 use crate::layout::ProjectLayout;
 use crate::metadata::{ModMetadata, read as read_metadata};
+use crate::preview;
 
 const PREVIEW_MAX_BYTES: u64 = 1_000_000;
 
@@ -27,28 +29,38 @@ pub fn check(project: &Project, release: bool) -> Result<ValidatedProject<'_>> {
     let mut metadata = Vec::new();
 
     if project.config.project.builds.is_empty() {
-        problems.push("knoxmancer.toml: project.builds must not be empty".to_owned());
+        problems.push(Diagnostic::at(
+            "project.builds.empty",
+            project.root.join("knoxmancer.toml"),
+            "project.builds must not be empty",
+        ));
     }
     for build in &project.config.project.builds {
         let path = source_root.join(build).join("mod.info");
         match read_metadata(&path, build) {
             Ok(value) => metadata.push(value),
-            Err(error) => problems.push(error.to_string()),
+            Err(error) => problems.push(Diagnostic::new("metadata.invalid", error.to_string())),
         }
     }
 
     if let Some(first) = metadata.first() {
         for value in &metadata[1..] {
             if value.id != first.id {
-                problems.push(format!(
-                    "{} build metadata uses ID {}, expected {}",
-                    value.build, value.id, first.id
+                problems.push(Diagnostic::new(
+                    "metadata.id.mismatch",
+                    format!(
+                        "{} build metadata uses ID {}, expected {}",
+                        value.build, value.id, first.id
+                    ),
                 ));
             }
             if value.version != first.version {
-                problems.push(format!(
-                    "{} build metadata uses version {}, expected {}",
-                    value.build, value.version, first.version
+                problems.push(Diagnostic::new(
+                    "metadata.version.mismatch",
+                    format!(
+                        "{} build metadata uses version {}, expected {}",
+                        value.build, value.version, first.version
+                    ),
                 ));
             }
         }
@@ -61,7 +73,7 @@ pub fn check(project: &Project, release: bool) -> Result<ValidatedProject<'_>> {
     }
 
     if !problems.is_empty() {
-        return Err(Error::validation(problems.join("\n")));
+        return Err(Error::validation_diagnostics(problems));
     }
     let result = metadata
         .into_iter()
@@ -74,66 +86,89 @@ pub fn check(project: &Project, release: bool) -> Result<ValidatedProject<'_>> {
     })
 }
 
-fn validate_changelog(root: &Path, version: &str, problems: &mut Vec<String>) {
+fn validate_changelog(root: &Path, version: &str, problems: &mut Vec<Diagnostic>) {
     let path = root.join("CHANGELOG.md");
     match fs::read_to_string(&path) {
         Ok(source) => {
             let heading = Regex::new(r"(?m)^## (\d+\.\d+\.\d+)\s*$").expect("valid regex");
             match heading.captures(&source).and_then(|capture| capture.get(1)) {
                 Some(found) if found.as_str() == version => {}
-                Some(found) => problems.push(format!(
-                    "{}: first release is {}, expected {version}",
-                    path.display(),
-                    found.as_str()
+                Some(found) => problems.push(Diagnostic::at(
+                    "changelog.version.mismatch",
+                    &path,
+                    format!("first release is {}, expected {version}", found.as_str()),
                 )),
-                None => problems.push(format!(
-                    "{}: add `## {version}` as the first release",
-                    path.display()
+                None => problems.push(Diagnostic::at(
+                    "changelog.version.missing",
+                    &path,
+                    format!("add `## {version}` as the first release"),
                 )),
             }
         }
-        Err(error) => problems.push(format!("{}: {error}", path.display())),
+        Err(error) => problems.push(Diagnostic::at(
+            "changelog.unreadable",
+            path,
+            error.to_string(),
+        )),
     }
 }
 
-fn validate_public(project: &Project, problems: &mut Vec<String>) {
+fn validate_public(project: &Project, problems: &mut Vec<Diagnostic>) {
     let public = ProjectLayout::new(project)
         .and_then(ProjectLayout::public_root)
         .expect("project layout was validated before public assets");
     for name in ["description.md", "preview.png", "workshop.txt"] {
         let path = public.join(name);
         if !path.is_file() {
-            problems.push(format!("{}: required file is missing", path.display()));
+            problems.push(Diagnostic::at(
+                "public.file.missing",
+                path,
+                "required file is missing",
+            ));
         }
     }
     let preview = public.join("preview.png");
     if let Ok(data) = fs::read(&preview) {
         if data.len() as u64 >= PREVIEW_MAX_BYTES {
-            problems.push(format!(
-                "{}: preview must be under 1000 KB",
-                preview.display()
+            problems.push(Diagnostic::at(
+                "preview.too_large",
+                &preview,
+                "preview must be under 1000 KB",
             ));
         }
-        if data.len() < 24 || &data[..8] != b"\x89PNG\r\n\x1a\n" {
-            problems.push(format!("{}: preview is not a valid PNG", preview.display()));
-        } else {
-            let width = u32::from_be_bytes(data[16..20].try_into().expect("four bytes"));
-            let height = u32::from_be_bytes(data[20..24].try_into().expect("four bytes"));
-            if (width, height) != (256, 256) {
-                problems.push(format!(
-                    "{}: preview must be 256x256, found {width}x{height}",
-                    preview.display()
+        match preview::inspect(&data) {
+            Ok((width, height)) => {
+                if (width, height) != (256, 256) {
+                    problems.push(Diagnostic::at(
+                        "preview.dimensions.invalid",
+                        &preview,
+                        format!("preview must be 256x256, found {width}x{height}"),
+                    ));
+                }
+            }
+            Err(error) => {
+                problems.push(Diagnostic::at(
+                    "preview.invalid_png",
+                    &preview,
+                    format!("preview is not a valid PNG: {error}"),
                 ));
             }
         }
     }
 }
 
-fn validate_translations(source_root: &Path, problems: &mut Vec<String>) {
-    for entry in WalkDir::new(source_root)
-        .into_iter()
-        .filter_map(|entry| entry.ok())
-    {
+fn validate_translations(source_root: &Path, problems: &mut Vec<Diagnostic>) {
+    for entry in WalkDir::new(source_root) {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(error) => {
+                problems.push(Diagnostic::new(
+                    "translation.walk.failed",
+                    format!("could not inspect translations: {error}"),
+                ));
+                continue;
+            }
+        };
         let path = entry.path();
         if path
             .extension()
@@ -147,31 +182,36 @@ fn validate_translations(source_root: &Path, problems: &mut Vec<String>) {
                 .and_then(|source| serde_json::from_str::<serde_json::Value>(&source).ok())
             {
                 Some(serde_json::Value::Object(_)) => {}
-                _ => problems.push(format!(
-                    "{}: translation must be a valid JSON object",
-                    path.display()
+                _ => problems.push(Diagnostic::at(
+                    "translation.invalid_json",
+                    path,
+                    "translation must be a valid JSON object",
                 )),
             }
         }
     }
 }
 
-fn validate_release(project: &Project, problems: &mut Vec<String>) {
+fn validate_release(project: &Project, problems: &mut Vec<Diagnostic>) {
     for included in &project.config.release.include {
         let path = ProjectLayout::new(project)
             .and_then(|layout| layout.included(included))
             .map(|(_, source)| source)
             .expect("project layout was validated before release inputs");
         if !path.is_file() {
-            problems.push(format!("{}: release file is missing", path.display()));
+            problems.push(Diagnostic::at(
+                "release.include.missing",
+                path,
+                "release file is missing",
+            ));
         }
     }
     if let Some(minify) = &project.config.release.minify
         && !command_exists(&minify.command)
     {
-        problems.push(format!(
-            "release minifier `{}` was not found",
-            minify.command
+        problems.push(Diagnostic::new(
+            "release.minifier.missing",
+            format!("release minifier `{}` was not found", minify.command),
         ));
     }
 }
@@ -184,6 +224,10 @@ mod tests {
     use crate::test_runner;
     use std::path::PathBuf;
     use tempfile::tempdir;
+
+    fn png(width: u32, height: u32) -> Vec<u8> {
+        preview::generate(width, height)
+    }
 
     fn valid_project(root: &Path) -> Project {
         fs::create_dir_all(root.join("src/42")).unwrap();
@@ -200,11 +244,7 @@ mod tests {
         .unwrap();
         fs::write(root.join("public/description.md"), "Description").unwrap();
         fs::write(root.join("public/workshop.txt"), "{{DESCRIPTION}}").unwrap();
-        let mut png = Vec::from(b"\x89PNG\r\n\x1a\n".as_slice());
-        png.extend_from_slice(&[0; 8]);
-        png.extend_from_slice(&256_u32.to_be_bytes());
-        png.extend_from_slice(&256_u32.to_be_bytes());
-        fs::write(root.join("public/preview.png"), png).unwrap();
+        fs::write(root.join("public/preview.png"), png(256, 256)).unwrap();
         Project {
             root: root.to_path_buf(),
             config: Config::default(),
@@ -270,14 +310,14 @@ mod tests {
         assert!(
             problems
                 .iter()
-                .any(|problem| problem.contains("add `## 1.0.0`"))
+                .any(|problem| problem.to_string().contains("add `## 1.0.0`"))
         );
         fs::write(temporary.path().join("CHANGELOG.md"), "## 0.9.0\n").unwrap();
         validate_changelog(temporary.path(), "1.0.0", &mut problems);
         assert!(
             problems
                 .iter()
-                .any(|problem| problem.contains("expected 1.0.0"))
+                .any(|problem| problem.to_string().contains("expected 1.0.0"))
         );
     }
 
@@ -286,19 +326,21 @@ mod tests {
         let temporary = tempdir().unwrap();
         let mut value = valid_project(temporary.path());
         let preview = temporary.path().join("public/preview.png");
-        let mut png = fs::read(&preview).unwrap();
-        png[16..20].copy_from_slice(&128_u32.to_be_bytes());
-        fs::write(&preview, png).unwrap();
+        fs::write(&preview, png(128, 256)).unwrap();
         let mut problems = Vec::new();
         validate_public(&value, &mut problems);
-        assert!(problems.iter().any(|problem| problem.contains("128x256")));
+        assert!(
+            problems
+                .iter()
+                .any(|problem| problem.to_string().contains("128x256"))
+        );
 
         fs::write(&preview, vec![0; PREVIEW_MAX_BYTES as usize]).unwrap();
         validate_public(&value, &mut problems);
         assert!(
             problems
                 .iter()
-                .any(|problem| problem.contains("under 1000 KB"))
+                .any(|problem| problem.to_string().contains("under 1000 KB"))
         );
 
         value.config.release.include.push(PathBuf::from("MISSING"));
@@ -310,12 +352,12 @@ mod tests {
         assert!(
             problems
                 .iter()
-                .any(|problem| problem.contains("release file is missing"))
+                .any(|problem| problem.to_string().contains("release file is missing"))
         );
         assert!(
             problems
                 .iter()
-                .any(|problem| problem.contains("was not found"))
+                .any(|problem| problem.to_string().contains("was not found"))
         );
     }
 

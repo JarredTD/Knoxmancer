@@ -96,6 +96,19 @@ fn emits_versioned_json_errors() {
     assert_eq!(event["schema_version"], 1);
     assert_eq!(event["status"], "error");
     assert_eq!(event["kind"], "project");
+
+    let project = temporary.path().join("diagnostic-mod");
+    assert!(
+        km(&["new", path(&project), "--author", "Tester"])
+            .status
+            .success()
+    );
+    fs::write(project.join("CHANGELOG.md"), "no release").unwrap();
+    let output = km(&["--format", "json", "--project", path(&project), "check"]);
+    let event: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(event["kind"], "validation");
+    assert_eq!(event["diagnostics"][0]["code"], "changelog.version.missing");
+    assert!(event["diagnostics"][0]["path"].is_string());
 }
 
 #[test]
