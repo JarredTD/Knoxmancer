@@ -54,9 +54,32 @@ pub(crate) fn copy_file(source: &Path, destination: &Path) -> Result<()> {
     fs::copy(source, destination).map(|_| ()).map_err(|error| {
         Error::io(std::io::Error::new(
             error.kind(),
-            format!("{}: {error}", source.display()),
+            format!(
+                "could not copy {} to {}: {error}",
+                source.display(),
+                destination.display()
+            ),
         ))
     })
+}
+
+/// Copies a directory into a sibling staging path and atomically replaces its destination.
+pub(crate) fn replace_with_copy(source: &Path, destination: &Path) -> Result<AtomicReplaceResult> {
+    let parent = destination
+        .parent()
+        .ok_or_else(|| Error::project("copy destination has no parent"))?;
+    let id = destination
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| Error::project("copy destination has no valid directory name"))?;
+    fs::create_dir_all(parent).map_err(Error::io)?;
+    let staging = staging_path(parent, id);
+    remove_tree_if_exists(&staging)?;
+    let result = copy_tree(source, &staging).and_then(|()| atomic_replace(&staging, destination));
+    if result.is_err() {
+        let _ = remove_tree_if_exists(&staging);
+    }
+    result
 }
 
 /// Atomically replaces a directory and attempts rollback on failure.
@@ -76,13 +99,11 @@ pub(crate) fn atomic_replace(staging: &Path, destination: &Path) -> Result<Atomi
     if destination.exists()
         && let Err(error) = fs::rename(destination, &backup)
     {
-        return Err(Error::io(std::io::Error::new(
-            error.kind(),
-            format!(
-                "could not move existing directory {}: {error}",
-                destination.display()
-            ),
-        )));
+        return Err(destination_error(
+            error,
+            destination,
+            "could not move the existing directory",
+        ));
     }
     if let Err(error) = fs::rename(staging, destination) {
         if backup.exists()
@@ -97,13 +118,11 @@ pub(crate) fn atomic_replace(staging: &Path, destination: &Path) -> Result<Atomi
                 ),
             )));
         }
-        return Err(Error::io(std::io::Error::new(
-            error.kind(),
-            format!(
-                "could not replace directory {}: {error}",
-                destination.display()
-            ),
-        )));
+        return Err(destination_error(
+            error,
+            destination,
+            "could not replace the directory",
+        ));
     }
     let cleanup_warning = remove_tree_if_exists(&backup).err().map(|error| {
         format!(
@@ -112,6 +131,19 @@ pub(crate) fn atomic_replace(staging: &Path, destination: &Path) -> Result<Atomi
         )
     });
     Ok(AtomicReplaceResult { cleanup_warning })
+}
+
+/// Adds destination context and recovery guidance to a filesystem error.
+fn destination_error(error: std::io::Error, destination: &Path, action: &str) -> Error {
+    let hint = if error.kind() == std::io::ErrorKind::PermissionDenied {
+        " Project Zomboid or another program may be using these files; close it and try again."
+    } else {
+        ""
+    };
+    Error::io(std::io::Error::new(
+        error.kind(),
+        format!("{action} {}: {error}.{hint}", destination.display()),
+    ))
 }
 
 /// Removes a directory tree after making read-only entries writable.
@@ -173,6 +205,7 @@ mod tests {
         let missing = temporary.path().join("missing");
         assert!(copy_tree(&missing, &temporary.path().join("copy")).is_err());
         assert!(copy_file(&missing, &temporary.path().join("file")).is_err());
+        assert!(replace_with_copy(&missing, &temporary.path().join("replaced")).is_err());
 
         let destination = temporary.path().join("artifact");
         fs::create_dir(&destination).unwrap();

@@ -4,7 +4,7 @@ use crate::error::{Error, Result};
 use crate::project::{Project, ProjectLayout, ValidatedProject};
 use crate::system::environment::home_directory;
 use crate::system::fs::{
-    atomic_replace, copy_file, copy_tree, remove_tree_if_exists, staging_path,
+    atomic_replace, copy_file, copy_tree, remove_tree_if_exists, replace_with_copy, staging_path,
 };
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -75,7 +75,8 @@ pub fn install(
         Some(path) => std::env::current_dir().map_err(Error::io)?.join(path),
         None => home_directory()
             .ok_or_else(|| Error::project("home directory is unavailable; pass --root"))?
-            .join("Zomboid/mods"),
+            .join("Zomboid")
+            .join("mods"),
     };
     let destination = root.join(&artifact.mod_id);
     if destination.parent() != Some(root.as_path()) {
@@ -84,20 +85,7 @@ pub fn install(
             destination.display()
         )));
     }
-    fs::create_dir_all(&root).map_err(Error::io)?;
-    let staging = staging_path(&root, &artifact.mod_id);
-    remove_tree_if_exists(&staging)?;
-    if let Err(error) = copy_tree(&artifact.path, &staging) {
-        let _ = remove_tree_if_exists(&staging);
-        return Err(error);
-    }
-    let replacement = match atomic_replace(&staging, &destination) {
-        Ok(replacement) => replacement,
-        Err(error) => {
-            let _ = remove_tree_if_exists(&staging);
-            return Err(error);
-        }
-    };
+    let replacement = replace_with_copy(&artifact.path, &destination)?;
     Ok(InstallResult {
         path: destination,
         warnings: replacement.cleanup_warning.into_iter().collect(),

@@ -10,8 +10,8 @@ pub(crate) fn doctor() -> Vec<String> {
     lines.push(report_command("git", &["--version"]));
 
     if let Some(home) = home_directory() {
-        let mods = home.join("Zomboid/mods");
-        let workshop = home.join("Zomboid/Workshop");
+        let mods = home.join("Zomboid").join("mods");
+        let workshop = home.join("Zomboid").join("Workshop");
         lines.push(format!(
             "Local mods: {} ({})",
             mods.display(),
