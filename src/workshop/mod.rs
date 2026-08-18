@@ -12,7 +12,8 @@ use crate::error::{Error, Result};
 use crate::project::ValidatedProject;
 use crate::system::environment::zomboid_root;
 use crate::system::fs::{
-    atomic_replace, copy_file, remove_tree_if_exists, replace_with_copy, staging_path,
+    atomic_replace, cleanup_staging_on_error, copy_file, remove_tree_if_exists, replace_with_copy,
+    staging_path,
 };
 
 /// Builds and atomically replaces a Steam Workshop upload tree.
@@ -44,10 +45,7 @@ pub(crate) fn package(validated: &ValidatedProject<'_>) -> Result<PackageResult>
         fs::write(staging.join("workshop.txt"), render(project, workshop)?).map_err(Error::io)?;
         atomic_replace(&staging, &destination)
     })();
-    if result.is_err() {
-        let _ = remove_tree_if_exists(&staging);
-    }
-    let replacement = result?;
+    let replacement = cleanup_staging_on_error(result, &staging)?;
     Ok(PackageResult {
         path: destination,
         mod_id: metadata.id.clone(),

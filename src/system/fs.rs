@@ -283,10 +283,21 @@ pub(crate) fn replace_with_copy(source: &Path, destination: &Path) -> Result<Ato
     let staging = staging_path(parent, id);
     remove_tree_if_exists(&staging)?;
     let result = copy_tree(source, &staging).and_then(|()| atomic_replace(&staging, destination));
-    if result.is_err() {
-        let _ = remove_tree_if_exists(&staging);
+    cleanup_staging_on_error(result, &staging)
+}
+
+/// Removes a staging directory after a failed operation without hiding cleanup failures.
+pub(crate) fn cleanup_staging_on_error<T>(result: Result<T>, staging: &Path) -> Result<T> {
+    match result {
+        Ok(value) => Ok(value),
+        Err(primary) => match remove_tree_if_exists(staging) {
+            Ok(()) => Err(primary),
+            Err(cleanup) => Err(Error::io(io::Error::other(format!(
+                "{primary}; staging directory {} also could not be removed: {cleanup}",
+                staging.display()
+            )))),
+        },
     }
-    result
 }
 
 /// Atomically replaces a directory and attempts rollback on failure.
@@ -620,6 +631,19 @@ mod tests {
             "could not replace the directory",
         );
         assert!(denied.to_string().contains("close it and try again"));
+    }
+
+    #[test]
+    fn reports_staging_directory_cleanup_failures() {
+        let temporary = tempdir().unwrap();
+        let staging = temporary.path().join("staging-file");
+        fs::write(&staging, "not a directory").unwrap();
+        let result: Result<()> = Err(Error::project("primary failure"));
+
+        let error = cleanup_staging_on_error(result, &staging).unwrap_err();
+
+        assert!(error.to_string().contains("primary failure"));
+        assert!(error.to_string().contains("staging directory"));
     }
 
     #[test]

@@ -4,7 +4,8 @@ use crate::error::{Error, Result};
 use crate::project::{Project, ProjectLayout, ValidatedProject};
 use crate::system::environment::zomboid_root;
 use crate::system::fs::{
-    atomic_replace, copy_file, copy_tree, remove_tree_if_exists, replace_with_copy, staging_path,
+    atomic_replace, cleanup_staging_on_error, copy_file, copy_tree, remove_tree_if_exists,
+    replace_with_copy, staging_path,
 };
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -54,10 +55,7 @@ pub fn build(validated: &ValidatedProject<'_>) -> Result<DevelopmentArtifact> {
         assemble_mod(validated, &staging)?;
         atomic_replace(&staging, &destination)
     })();
-    if result.is_err() {
-        let _ = remove_tree_if_exists(&staging);
-    }
-    let replacement = result?;
+    let replacement = cleanup_staging_on_error(result, &staging)?;
     Ok(DevelopmentArtifact {
         path: destination,
         mod_id: metadata.id.clone(),
