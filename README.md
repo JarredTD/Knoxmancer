@@ -8,6 +8,8 @@ is not affiliated with The Indie Stone.
 
 ## Install
 
+Requires Rust 1.97 or newer.
+
 ```sh
 cargo install --git https://github.com/JarredTD/Knoxmancer --locked
 ```
