@@ -1,6 +1,11 @@
 //! PNG preview generation and structural validation.
 
+use std::io::Read;
+
+use flate2::read::ZlibDecoder;
+
 const SIGNATURE: &[u8; 8] = b"\x89PNG\r\n\x1a\n";
+const DECOMPRESSED_DATA_MAX_BYTES: u64 = 2_000_000;
 
 /// Generates a valid RGBA PNG with an uncompressed zlib stream.
 pub(crate) fn generate(width: u32, height: u32) -> Vec<u8> {
@@ -46,6 +51,7 @@ pub(crate) fn inspect(data: &[u8]) -> std::result::Result<(u32, u32), String> {
     }
     let mut offset = SIGNATURE.len();
     let mut dimensions = None;
+    let mut image_data = Vec::new();
     let mut saw_data = false;
     let mut saw_end = false;
     while offset < data.len() {
@@ -100,7 +106,10 @@ pub(crate) fn inspect(data: &[u8]) -> std::result::Result<(u32, u32), String> {
                 }
                 dimensions = Some((width, height));
             }
-            b"IDAT" => saw_data = true,
+            b"IDAT" => {
+                saw_data = true;
+                image_data.extend_from_slice(chunk);
+            }
             b"IEND" => {
                 if !chunk.is_empty() || checksum_end != data.len() {
                     return Err("invalid IEND chunk".to_owned());
@@ -120,6 +129,15 @@ pub(crate) fn inspect(data: &[u8]) -> std::result::Result<(u32, u32), String> {
     }
     if !saw_data || !saw_end {
         return Err("PNG requires IDAT and IEND chunks".to_owned());
+    }
+    let decoder = ZlibDecoder::new(image_data.as_slice());
+    let mut decoded = Vec::new();
+    decoder
+        .take(DECOMPRESSED_DATA_MAX_BYTES + 1)
+        .read_to_end(&mut decoded)
+        .map_err(|error| format!("invalid PNG image data: {error}"))?;
+    if decoded.len() as u64 > DECOMPRESSED_DATA_MAX_BYTES {
+        return Err("PNG image data exceeds the decompression limit".to_owned());
     }
     dimensions.ok_or_else(|| "PNG requires an IHDR chunk".to_owned())
 }
@@ -163,5 +181,20 @@ mod tests {
         corrupt[20] ^= 1;
         assert!(inspect(&corrupt).is_err());
         assert!(inspect(b"not png").is_err());
+
+        let mut invalid_data = generate(1, 1);
+        let idat_length_offset = 33;
+        let idat_type_offset = idat_length_offset + 4;
+        let idat_data_offset = idat_type_offset + 4;
+        let idat_length = u32::from_be_bytes(
+            invalid_data[idat_length_offset..idat_type_offset]
+                .try_into()
+                .unwrap(),
+        ) as usize;
+        invalid_data[idat_data_offset] ^= 1;
+        let checksum_offset = idat_data_offset + idat_length;
+        let checksum = crc32(&invalid_data[idat_type_offset..checksum_offset]);
+        invalid_data[checksum_offset..checksum_offset + 4].copy_from_slice(&checksum.to_be_bytes());
+        assert!(inspect(&invalid_data).is_err());
     }
 }
