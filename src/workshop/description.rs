@@ -5,15 +5,12 @@ use std::fs;
 use regex::Regex;
 
 use crate::error::{Error, Result};
-use crate::project::{Project, ProjectLayout};
-
-/// Placeholder replaced with rendered Workshop description fields.
-const DESCRIPTION_MARKER: &str = "{{DESCRIPTION}}";
+use crate::project::{Project, ProjectLayout, WorkshopMetadata};
 /// Maximum UTF-8 byte length accepted by Steam Workshop.
 pub(crate) const DESCRIPTION_MAX_BYTES: usize = 8_000;
 
 /// Renders the public Markdown description into `workshop.txt`.
-pub(crate) fn render(project: &Project) -> Result<String> {
+pub(crate) fn render(project: &Project, metadata: &WorkshopMetadata) -> Result<String> {
     let public = ProjectLayout::new(project)?.public_root()?;
     let description_path = public.join("description.md");
     let markdown = fs::read_to_string(&description_path).map_err(Error::io)?;
@@ -41,15 +38,7 @@ pub(crate) fn render(project: &Project) -> Result<String> {
         .map(|line| format!("description={line}"))
         .collect::<Vec<_>>()
         .join("\n");
-    let workshop_path = public.join("workshop.txt");
-    let workshop = fs::read_to_string(&workshop_path).map_err(Error::io)?;
-    if workshop.matches(DESCRIPTION_MARKER).count() != 1 {
-        return Err(Error::validation(format!(
-            "{}: {DESCRIPTION_MARKER} must appear exactly once",
-            workshop_path.display()
-        )));
-    }
-    Ok(workshop.replace(DESCRIPTION_MARKER, &description_lines))
+    Ok(metadata.render(&description_lines))
 }
 
 /// Converts the supported Markdown subset into Steam BBCode.
@@ -101,6 +90,7 @@ fn inline(text: &str, link: &Regex, bold: &Regex, italic: &Regex, code: &Regex) 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::project::WorkshopVisibility;
     use crate::project::config::Config;
     use tempfile::tempdir;
 
@@ -108,6 +98,15 @@ mod tests {
         Project {
             root: root.to_path_buf(),
             config: Config::default(),
+        }
+    }
+
+    fn metadata() -> WorkshopMetadata {
+        WorkshopMetadata {
+            id: 0,
+            title: "Example".to_owned(),
+            tags: vec!["Build 42".to_owned()],
+            visibility: WorkshopVisibility::Unlisted,
         }
     }
 
@@ -128,22 +127,21 @@ mod tests {
         let value = project(temporary.path());
         let public = temporary.path().join("public");
         fs::create_dir(&public).unwrap();
-        fs::write(public.join("workshop.txt"), "{{DESCRIPTION}}").unwrap();
-
         fs::write(public.join("description.md"), "plain").unwrap();
-        assert!(render(&value).unwrap().contains("description=plain"));
+        assert!(
+            render(&value, &metadata())
+                .unwrap()
+                .contains("description=plain")
+        );
         fs::write(public.join("description.md"), "\n").unwrap();
-        assert!(render(&value).is_err());
+        assert!(render(&value, &metadata()).is_err());
         fs::write(public.join("description.md"), "{{REMOVED}}").unwrap();
-        assert!(render(&value).is_err());
+        assert!(render(&value, &metadata()).is_err());
         fs::write(
             public.join("description.md"),
             "x".repeat(DESCRIPTION_MAX_BYTES),
         )
         .unwrap();
-        assert!(render(&value).is_err());
-        fs::write(public.join("description.md"), "plain").unwrap();
-        fs::write(public.join("workshop.txt"), "missing marker").unwrap();
-        assert!(render(&value).is_err());
+        assert!(render(&value, &metadata()).is_err());
     }
 }

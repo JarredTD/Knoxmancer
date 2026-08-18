@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 
+use super::WorkshopMetadata;
 use super::config::Project;
 use super::diagnostic::Diagnostic;
 use super::layout::ProjectLayout;
@@ -24,6 +25,8 @@ pub struct ValidatedProject<'a> {
     pub layout: ProjectLayout<'a>,
     /// Shared mod identity established from configured builds.
     pub metadata: ModMetadata,
+    /// Parsed Workshop metadata for Workshop-targeted validation.
+    pub workshop: Option<WorkshopMetadata>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -88,10 +91,13 @@ pub fn check(project: &Project, target: ValidationTarget) -> Result<ValidatedPro
         }
     }
     validate_source_layout(&source_root, &mut problems);
-    if target == ValidationTarget::Workshop {
-        validate_public(project, &mut problems);
+    let workshop = if target == ValidationTarget::Workshop {
+        let workshop = validate_public(project, &mut problems);
         validate_package(project, &mut problems);
-    }
+        workshop
+    } else {
+        None
+    };
 
     if !problems.is_empty() {
         return Err(Error::validation_diagnostics(problems));
@@ -104,6 +110,7 @@ pub fn check(project: &Project, target: ValidationTarget) -> Result<ValidatedPro
         project,
         layout,
         metadata: result,
+        workshop,
     })
 }
 
@@ -120,7 +127,7 @@ fn validate_source_layout(source_root: &Path, problems: &mut Vec<Diagnostic>) {
 }
 
 /// Validates required Workshop metadata and preview assets.
-fn validate_public(project: &Project, problems: &mut Vec<Diagnostic>) {
+fn validate_public(project: &Project, problems: &mut Vec<Diagnostic>) -> Option<WorkshopMetadata> {
     let public = ProjectLayout::new(project)
         .and_then(ProjectLayout::public_root)
         .expect("project layout was validated before public assets");
@@ -163,8 +170,15 @@ fn validate_public(project: &Project, problems: &mut Vec<Diagnostic>) {
         }
     }
     let workshop_path = public.join("workshop.txt");
-    if workshop_path.is_file() {
-        problems.extend(workshop::validate(&workshop_path));
+    if !workshop_path.is_file() {
+        return None;
+    }
+    match workshop::parse(&workshop_path) {
+        Ok(metadata) => Some(metadata),
+        Err(diagnostics) => {
+            problems.extend(diagnostics);
+            None
+        }
     }
 }
 

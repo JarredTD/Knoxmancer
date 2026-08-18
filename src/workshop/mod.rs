@@ -40,7 +40,11 @@ pub(crate) fn package(validated: &ValidatedProject<'_>) -> Result<PackageResult>
         }
         let public = validated.layout.public_root()?;
         copy_file(&public.join("preview.png"), &staging.join("preview.png"))?;
-        fs::write(staging.join("workshop.txt"), render(project)?).map_err(Error::io)?;
+        let workshop = validated
+            .workshop
+            .as_ref()
+            .expect("Workshop validation produces parsed metadata");
+        fs::write(staging.join("workshop.txt"), render(project, workshop)?).map_err(Error::io)?;
         atomic_replace(&staging, &destination)
     })();
     if result.is_err() {
