@@ -52,7 +52,7 @@ pub fn check(project: &Project, release: bool) -> Result<ValidatedProject<'_>> {
             ));
             continue;
         }
-        let path = source_root.join(build).join("mod.info");
+        let path = source_root.join("mod.info");
         match read_metadata(&path, build) {
             Ok(value) => metadata.push(value),
             Err(error) => problems.push(Diagnostic::new("metadata.invalid", error.to_string())),
@@ -83,6 +83,7 @@ pub fn check(project: &Project, release: bool) -> Result<ValidatedProject<'_>> {
         validate_changelog(&project.root, &first.version, &mut problems);
     }
     validate_public(project, &mut problems);
+    validate_source_layout(&source_root, &mut problems);
     validate_translations(&source_root, &mut problems);
     if release {
         validate_release(project, &mut problems);
@@ -100,6 +101,18 @@ pub fn check(project: &Project, release: bool) -> Result<ValidatedProject<'_>> {
         layout,
         metadata: result,
     })
+}
+
+/// Rejects source paths that collide with Knoxmancer's generated Lua tree.
+fn validate_source_layout(source_root: &Path, problems: &mut Vec<Diagnostic>) {
+    let reserved = source_root.join("media/lua");
+    if reserved.exists() {
+        problems.push(Diagnostic::at(
+            "source.layout.reserved",
+            reserved,
+            "place Lua under src/client, src/shared, or src/server",
+        ));
+    }
 }
 
 /// Verifies the first changelog release matches the mod version.
@@ -275,10 +288,10 @@ mod tests {
     }
 
     fn valid_project(root: &Path) -> Project {
-        fs::create_dir_all(root.join("src/42")).unwrap();
+        fs::create_dir_all(root.join("src")).unwrap();
         fs::create_dir_all(root.join("public")).unwrap();
         fs::write(
-            root.join("src/42/mod.info"),
+            root.join("src/mod.info"),
             "name=Example\nid=Example\nmodversion=1.0.0\n",
         )
         .unwrap();
@@ -386,5 +399,14 @@ mod tests {
         fs::remove_file(temporary.path().join("public/description.md")).unwrap();
         assert!(check(&value, false).is_err());
         assert!(home_directory().is_some());
+    }
+
+    #[test]
+    fn rejects_game_layout_paths_inside_media() {
+        let temporary = tempdir().unwrap();
+        let value = valid_project(temporary.path());
+        fs::create_dir_all(temporary.path().join("src/media/lua/client")).unwrap();
+        let error = check(&value, false).unwrap_err().to_string();
+        assert!(error.contains("src/client, src/shared, or src/server"));
     }
 }

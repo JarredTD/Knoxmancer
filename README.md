@@ -46,10 +46,22 @@ output = "dist"
 include = ["CHANGELOG.md", "LICENSE"]
 ```
 
-All configured paths are relative to the project root. `source` contains build
-directories such as `src/42`; `public` contains `description.md`, `preview.png`,
-and `workshop.txt`; and `output` receives generated artifacts. Release includes
-must be files inside the project.
+All configured paths are relative to the project root. The source tree uses a
+development-oriented layout:
+
+```text
+src/
+├── mod.info
+├── client/
+├── shared/
+├── server/
+└── media/
+```
+
+Knoxmancer maps `client`, `shared`, and `server` into the corresponding
+`42/media/lua` directories. Files under `media` are copied into `42/media`.
+`public` contains `description.md`, `preview.png`, and `workshop.txt`; `output`
+receives generated artifacts. Release includes must be files inside the project.
 
 Game-facing metadata remains in `mod.info` and `workshop.txt`. Artifacts are
 written under `dist/dev`, `dist/release`, and `dist/workshop`.

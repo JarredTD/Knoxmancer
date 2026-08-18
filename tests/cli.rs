@@ -66,7 +66,7 @@ fn scaffolds_checks_builds_packages_installs_and_cleans() {
 #[test]
 fn initializes_an_existing_mod_without_rewriting_metadata() {
     let temporary = tempdir().unwrap();
-    let metadata = temporary.path().join("src/42/mod.info");
+    let metadata = temporary.path().join("src/mod.info");
     fs::create_dir_all(metadata.parent().unwrap()).unwrap();
     fs::write(&metadata, "name=Existing\nid=Existing\nmodversion=1.0.0\n").unwrap();
 
@@ -169,7 +169,7 @@ fn reports_validation_failures_and_recovers_after_correction() {
     assert!(!km(&["--project", path(&project), "check"]).status.success());
     fs::write(&preview, original_preview).unwrap();
 
-    let translation = project.join("src/42/media/lua/shared/Translate/EN/UI.json");
+    let translation = project.join("src/shared/Translate/EN/UI.json");
     fs::create_dir_all(translation.parent().unwrap()).unwrap();
     fs::write(&translation, "[]").unwrap();
     assert!(!km(&["--project", path(&project), "check"]).status.success());
@@ -187,8 +187,14 @@ fn preserves_sources_and_replaces_existing_artifacts() {
             .status
             .success()
     );
-    let lua = project.join("src/42/media/lua/client/example.lua");
+    let lua = project.join("src/client/example.lua");
     fs::write(&lua, "return true\n").unwrap();
+    fs::write(project.join("src/shared/example.lua"), "return 'shared'\n").unwrap();
+    fs::write(
+        project.join("src/media/sandbox-options.txt"),
+        "VERSION = 1\n",
+    )
+    .unwrap();
 
     let release = km(&["--project", path(&project), "build", "--release"]);
     assert!(
@@ -199,6 +205,16 @@ fn preserves_sources_and_replaces_existing_artifacts() {
     assert!(
         project
             .join("dist/release/ReleaseMod/42/media/lua/client/example.lua")
+            .is_file()
+    );
+    assert!(
+        project
+            .join("dist/release/ReleaseMod/42/media/lua/shared/example.lua")
+            .is_file()
+    );
+    assert!(
+        project
+            .join("dist/release/ReleaseMod/42/media/sandbox-options.txt")
             .is_file()
     );
     assert!(

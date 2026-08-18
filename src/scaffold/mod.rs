@@ -76,7 +76,7 @@ pub fn new_project(options: &NewProjectOptions) -> Result<NewProjectResult> {
     })
 }
 
-/// Writes a manifest for an existing conventional or flat Build 42 project.
+/// Writes a manifest for an existing source-oriented Build 42 project.
 pub fn init_project(explicit_root: Option<&Path>, force: bool) -> Result<PathBuf> {
     let root = absolute(explicit_root.unwrap_or(Path::new(".")))?;
     let manifest = root.join(MANIFEST_NAME);
@@ -87,18 +87,11 @@ pub fn init_project(explicit_root: Option<&Path>, force: bool) -> Result<PathBuf
         )));
     }
 
-    let source = if root.join("src/42/mod.info").is_file() {
-        PathBuf::from("src")
-    } else if root.join("42/mod.info").is_file() {
-        PathBuf::from(".")
-    } else {
-        return Err(Error::project(
-            "could not find src/42/mod.info or 42/mod.info in the project",
-        ));
-    };
+    if !root.join("src/mod.info").is_file() {
+        return Err(Error::project("could not find src/mod.info in the project"));
+    }
 
     let mut config = Config::default();
-    config.paths.source = source;
     config.release.include = ["CHANGELOG.md", "LICENSE"]
         .into_iter()
         .map(PathBuf::from)
@@ -118,11 +111,12 @@ fn write_scaffold(root: &Path, name: &str, id: &str, author: &str, build: &str) 
     };
     write_manifest(root, &config)?;
 
-    let media = root.join(format!("src/{build}/media"));
+    let source = root.join("src");
+    let media = source.join("media");
     for directory in [
-        media.join("lua/client"),
-        media.join("lua/server"),
-        media.join("lua/shared"),
+        source.join("client"),
+        source.join("server"),
+        source.join("shared"),
         media.join("scripts"),
         media.join("textures"),
         root.join("public"),
@@ -130,9 +124,9 @@ fn write_scaffold(root: &Path, name: &str, id: &str, author: &str, build: &str) 
         fs::create_dir_all(directory).map_err(Error::io)?;
     }
     for keep in [
-        media.join("lua/client/.gitkeep"),
-        media.join("lua/server/.gitkeep"),
-        media.join("lua/shared/.gitkeep"),
+        source.join("client/.gitkeep"),
+        source.join("server/.gitkeep"),
+        source.join("shared/.gitkeep"),
         media.join("scripts/.gitkeep"),
         media.join("textures/.gitkeep"),
     ] {
@@ -147,7 +141,7 @@ fn write_scaffold(root: &Path, name: &str, id: &str, author: &str, build: &str) 
         ("build", build),
     ];
     fs::write(
-        root.join(format!("src/{build}/mod.info")),
+        root.join("src/mod.info"),
         templates::render(templates::MOD_INFO, &values),
     )
     .map_err(Error::io)?;
@@ -227,7 +221,10 @@ mod tests {
         fs::create_dir(&root).unwrap();
         write_scaffold(&root, "Example Mod", "ExampleMod", "Author", "42").unwrap();
         assert!(root.join("knoxmancer.toml").is_file());
-        assert!(root.join("src/42/mod.info").is_file());
+        assert!(root.join("src/mod.info").is_file());
+        assert!(root.join("src/client/.gitkeep").is_file());
+        assert!(root.join("src/shared/.gitkeep").is_file());
+        assert!(root.join("src/server/.gitkeep").is_file());
         assert!(root.join("public/preview.png").metadata().unwrap().len() > 24);
         assert_eq!(
             &fs::read(root.join("public/preview.png")).unwrap()[..8],
@@ -247,7 +244,7 @@ mod tests {
             build: "42".to_owned(),
         };
         new_project(&args).unwrap();
-        let metadata = fs::read_to_string(root.join("src/42/mod.info")).unwrap();
+        let metadata = fs::read_to_string(root.join("src/mod.info")).unwrap();
         assert!(metadata.contains("name=Derived Project"));
         assert!(metadata.contains("id=DerivedProject"));
         assert!(new_project(&args).is_err());
@@ -269,14 +266,14 @@ mod tests {
     }
 
     #[test]
-    fn initializes_flat_projects_and_force_replaces_manifests() {
+    fn initializes_source_projects_and_force_replaces_manifests() {
         let temporary = tempdir().unwrap();
-        fs::create_dir(temporary.path().join("42")).unwrap();
-        fs::write(temporary.path().join("42/mod.info"), "id=Example").unwrap();
+        fs::create_dir(temporary.path().join("src")).unwrap();
+        fs::write(temporary.path().join("src/mod.info"), "id=Example").unwrap();
         fs::write(temporary.path().join("LICENSE"), "license").unwrap();
         init_project(Some(temporary.path()), false).unwrap();
         let manifest = fs::read_to_string(temporary.path().join(MANIFEST_NAME)).unwrap();
-        assert!(manifest.contains("source = \".\""));
+        assert!(manifest.contains("source = \"src\""));
         assert!(manifest.contains("\"LICENSE\""));
         assert!(init_project(Some(temporary.path()), false).is_err());
         init_project(Some(temporary.path()), true).unwrap();

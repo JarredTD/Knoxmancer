@@ -26,7 +26,7 @@ pub struct Config {
 #[serde(default, deny_unknown_fields)]
 /// Project Zomboid build configuration.
 pub struct ProjectConfig {
-    /// Build directories included in artifacts.
+    /// Project Zomboid build directories generated in artifacts.
     pub builds: Vec<String>,
 }
 

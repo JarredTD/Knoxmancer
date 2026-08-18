@@ -159,20 +159,22 @@ pub fn clean(project: &Project) -> Result<CleanResult> {
     })
 }
 
-/// Copies configured build directories and optional common sources.
+/// Maps the source-oriented project tree into each configured game build.
 fn copy_mod_source(project: &Project, destination: &Path) -> Result<()> {
     let source_root = ProjectLayout::new(project)?.source_root()?;
-    for directory in project
-        .config
-        .project
-        .builds
-        .iter()
-        .map(String::as_str)
-        .chain(std::iter::once("common"))
-    {
-        let source = source_root.join(directory);
-        if source.is_dir() {
-            copy_tree(&source, &destination.join(directory))?;
+    for build in &project.config.project.builds {
+        let build_root = destination.join(build);
+        let media_root = build_root.join("media");
+        copy_file(&source_root.join("mod.info"), &build_root.join("mod.info"))?;
+        let media = source_root.join("media");
+        if media.is_dir() {
+            copy_tree(&media, &media_root)?;
+        }
+        for scope in ["client", "shared", "server"] {
+            let source = source_root.join(scope);
+            if source.is_dir() {
+                copy_tree(&source, &media_root.join("lua").join(scope))?;
+            }
         }
     }
     Ok(())
