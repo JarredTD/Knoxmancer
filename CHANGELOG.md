@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Detect Steam and stage Workshop packages for the Project Zomboid uploader.
+- Build Workshop packages directly without a redundant release artifact.
 
 ## 0.2.0
 

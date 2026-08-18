@@ -29,12 +29,6 @@ fn scaffolds_checks_builds_packages_installs_and_cleans() {
     );
     assert!(km(&["--project", path(&project), "check"]).status.success());
     assert!(km(&["--project", path(&project), "build"]).status.success());
-    let release = km(&["--project", path(&project), "build", "--release"]);
-    assert!(
-        release.status.success(),
-        "{}",
-        String::from_utf8_lossy(&release.stderr)
-    );
     assert!(
         km(&[
             "--project",
@@ -60,6 +54,8 @@ fn scaffolds_checks_builds_packages_installs_and_cleans() {
     );
 
     assert!(project.join("dist/dev/ExampleMod/42/mod.info").is_file());
+    assert!(!project.join("dist/dev/ExampleMod/preview.png").exists());
+    assert!(!project.join("dist/release").exists());
     assert!(
         project
             .join("dist/workshop/ExampleMod/Contents/mods/ExampleMod/42/mod.info")
@@ -149,6 +145,10 @@ fn full_and_short_binaries_expose_the_same_version() {
     let package_help = String::from_utf8(package_help.stdout).unwrap();
     assert!(package_help.contains("--stage"));
     assert!(package_help.contains("--root"));
+    let build_help = String::from_utf8(km(&["build", "--help"]).stdout).unwrap();
+    let install_help = String::from_utf8(km(&["install", "--help"]).stdout).unwrap();
+    assert!(!build_help.contains("--release"));
+    assert!(!install_help.contains("--release"));
 }
 
 #[test]
@@ -215,25 +215,20 @@ fn preserves_sources_and_replaces_existing_artifacts() {
     )
     .unwrap();
 
-    let release = km(&["--project", path(&project), "build", "--release"]);
-    assert!(
-        release.status.success(),
-        "{}",
-        String::from_utf8_lossy(&release.stderr)
-    );
+    assert!(km(&["--project", path(&project), "build"]).status.success());
     assert!(
         project
-            .join("dist/release/ReleaseMod/42/media/lua/client/example.lua")
+            .join("dist/dev/ReleaseMod/42/media/lua/client/example.lua")
             .is_file()
     );
     assert!(
         project
-            .join("dist/release/ReleaseMod/42/media/lua/shared/example.lua")
+            .join("dist/dev/ReleaseMod/42/media/lua/shared/example.lua")
             .is_file()
     );
     assert!(
         project
-            .join("dist/release/ReleaseMod/42/media/sandbox-options.txt")
+            .join("dist/dev/ReleaseMod/42/media/sandbox-options.txt")
             .is_file()
     );
     assert!(
@@ -254,7 +249,6 @@ fn preserves_sources_and_replaces_existing_artifacts() {
                 "--project",
                 path(&project),
                 "install",
-                "--release",
                 "--root",
                 path(&mods),
             ])

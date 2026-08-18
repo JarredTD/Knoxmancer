@@ -94,7 +94,7 @@ pub enum Command {
     Doctor(DoctorArgs),
     /// Validates project structure, metadata, and assets.
     Check(CheckArgs),
-    /// Creates a development or release artifact.
+    /// Creates a local development artifact.
     Build(BuildArgs),
     /// Builds and atomically installs the mod locally.
     Install(InstallArgs),
@@ -145,18 +145,11 @@ pub struct CheckArgs {
 
 #[derive(Debug, Args, Default)]
 /// Arguments for artifact construction.
-pub struct BuildArgs {
-    #[arg(long)]
-    /// Builds with publishing validation enabled.
-    pub release: bool,
-}
+pub struct BuildArgs {}
 
 #[derive(Debug, Args, Default)]
 /// Arguments for local mod installation.
 pub struct InstallArgs {
-    #[arg(long)]
-    /// Installs an artifact built with publishing validation.
-    pub release: bool,
     #[arg(long, value_name = "PATH")]
     /// Overrides the default Project Zomboid mods root.
     pub root: Option<PathBuf>,

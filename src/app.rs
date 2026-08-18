@@ -1,6 +1,6 @@
 //! Application workflows connecting CLI input, core operations, and output.
 
-use crate::build::{self, BuildArtifact, BuildProfile};
+use crate::build::{self, DevelopmentArtifact};
 use crate::cli::Reporter;
 use crate::cli::{Cli, Command, NewArgs};
 use crate::error::Result;
@@ -29,13 +29,13 @@ pub(crate) fn run(cli: Cli, reporter: &Reporter) -> Result<()> {
             report_checked(&validated, reporter);
             Ok(())
         }
-        Command::Build(args) => {
+        Command::Build(_) => {
             let project = discover(project_start.as_deref())?;
-            build(&project, profile(args.release), reporter).map(|_| ())
+            build(&project, reporter).map(|_| ())
         }
         Command::Install(args) => {
             let project = discover(project_start.as_deref())?;
-            let built = build(&project, profile(args.release), reporter)?;
+            let built = build(&project, reporter)?;
             let installed = build::install(&built, args.root.as_deref())?;
             report_warnings(&installed.warnings, reporter);
             reporter.status(&format!("Installed {}", installed.path.display()));
@@ -45,9 +45,8 @@ pub(crate) fn run(cli: Cli, reporter: &Reporter) -> Result<()> {
             let project = discover(project_start.as_deref())?;
             let validated = validation::check(&project, true)?;
             report_checked(&validated, reporter);
-            let built = build_validated(&validated, BuildProfile::Release, reporter)?;
-            let release = build::ReleaseArtifact::try_from(built)?;
-            let packaged = crate::workshop::package(&validated, &release)?;
+            reporter.verbose("Staging Workshop artifact with atomic replacement");
+            let packaged = crate::workshop::package(&validated)?;
             report_warnings(&packaged.warnings, reporter);
             reporter.status(&format!(
                 "Packaged Workshop artifact: {}",
@@ -100,27 +99,14 @@ fn new_project(args: NewArgs, reporter: &Reporter) -> Result<()> {
     Ok(())
 }
 
-/// Validates and builds a project for the requested profile.
-fn build(project: &Project, profile: BuildProfile, reporter: &Reporter) -> Result<BuildArtifact> {
-    let validated = validation::check(project, profile == BuildProfile::Release)?;
+/// Validates and builds a local development artifact.
+fn build(project: &Project, reporter: &Reporter) -> Result<DevelopmentArtifact> {
+    let validated = validation::check(project, false)?;
     report_checked(&validated, reporter);
-    build_validated(&validated, profile, reporter)
-}
-
-/// Builds a previously validated project and reports its artifact path.
-fn build_validated(
-    validated: &ValidatedProject<'_>,
-    profile: BuildProfile,
-    reporter: &Reporter,
-) -> Result<BuildArtifact> {
     reporter.verbose("Staging artifact with atomic replacement");
-    let artifact = build::build(validated, profile)?;
+    let artifact = build::build(&validated)?;
     report_warnings(&artifact.warnings, reporter);
-    reporter.status(&format!(
-        "Built {} artifact: {}",
-        artifact.profile.name(),
-        artifact.path.display()
-    ));
+    reporter.status(&format!("Built artifact: {}", artifact.path.display()));
     Ok(artifact)
 }
 
@@ -147,13 +133,4 @@ fn report_checked(validated: &ValidatedProject<'_>, reporter: &Reporter) {
             .collect::<Vec<_>>()
             .join(", ")
     ));
-}
-
-/// Maps the release switch to an artifact profile.
-fn profile(release: bool) -> BuildProfile {
-    if release {
-        BuildProfile::Release
-    } else {
-        BuildProfile::Development
-    }
 }

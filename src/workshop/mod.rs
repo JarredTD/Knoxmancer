@@ -7,7 +7,7 @@ mod description;
 
 use description::render;
 
-use crate::build::ReleaseArtifact;
+use crate::build::assemble_mod;
 use crate::error::{Error, Result};
 use crate::project::ValidatedProject;
 use crate::system::fs::{
@@ -15,19 +15,9 @@ use crate::system::fs::{
 };
 
 /// Builds and atomically replaces a Steam Workshop upload tree.
-pub(crate) fn package(
-    validated: &ValidatedProject<'_>,
-    release: &ReleaseArtifact,
-) -> Result<PackageResult> {
+pub(crate) fn package(validated: &ValidatedProject<'_>) -> Result<PackageResult> {
     let project = validated.project;
     let metadata = &validated.metadata;
-    let release = release.artifact();
-    if release.mod_id != metadata.id {
-        return Err(Error::project(format!(
-            "release artifact ID {} does not match validated mod ID {}",
-            release.mod_id, metadata.id
-        )));
-    }
     let output = validated.layout.output_root()?;
     let destination = output.join("workshop").join(&metadata.id);
     let staging = staging_path(
@@ -40,22 +30,9 @@ pub(crate) fn package(
     let result = (|| {
         let mod_root = staging.join("Contents/mods").join(&metadata.id);
         fs::create_dir_all(&mod_root).map_err(Error::io)?;
-        for directory in project
-            .config
-            .project
-            .builds
-            .iter()
-            .map(String::as_str)
-            .chain(std::iter::once("common"))
-        {
-            let source = release.path.join(directory);
-            if source.is_dir() {
-                copy_tree(&source, &mod_root.join(directory))?;
-            }
-        }
+        assemble_mod(validated, &mod_root)?;
         for included in &project.config.release.include {
-            let (relative, _) = validated.layout.included(included)?;
-            let source = release.path.join(&relative);
+            let (relative, source) = validated.layout.included(included)?;
             if source.is_file() {
                 let file_name = relative.file_name().ok_or_else(|| {
                     Error::project(format!("invalid included path: {}", relative.display()))

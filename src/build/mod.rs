@@ -1,4 +1,4 @@
-//! Development and release artifact construction and installation.
+//! Local development artifact construction and installation.
 
 use crate::error::{Error, Result};
 use crate::project::{Project, ProjectLayout, ValidatedProject};
@@ -9,60 +9,15 @@ use crate::system::fs::{
 use std::fs;
 use std::path::{Path, PathBuf};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-/// Artifact policy selected for a build.
-pub enum BuildProfile {
-    /// Local development artifact with standard validation.
-    Development,
-    /// Publishing artifact with release-input validation.
-    Release,
-}
-
-impl BuildProfile {
-    /// Returns the directory name used for this profile.
-    pub fn name(self) -> &'static str {
-        match self {
-            Self::Development => "dev",
-            Self::Release => "release",
-        }
-    }
-}
-
 #[derive(Debug)]
-/// Completed artifact and its identity metadata.
-pub struct BuildArtifact {
+/// Completed local development artifact and its identity metadata.
+pub struct DevelopmentArtifact {
     /// Root directory of the generated artifact.
     pub path: PathBuf,
     /// Project Zomboid mod identifier.
     pub mod_id: String,
-    /// Policy used to build the artifact.
-    pub profile: BuildProfile,
     /// Non-fatal cleanup warnings produced during replacement.
     pub warnings: Vec<String>,
-}
-
-/// A build artifact proven to use the release profile.
-#[derive(Debug)]
-pub struct ReleaseArtifact(BuildArtifact);
-
-impl ReleaseArtifact {
-    /// Returns the underlying release build artifact.
-    pub fn artifact(&self) -> &BuildArtifact {
-        &self.0
-    }
-}
-
-impl TryFrom<BuildArtifact> for ReleaseArtifact {
-    type Error = Error;
-
-    fn try_from(artifact: BuildArtifact) -> Result<Self> {
-        if artifact.profile != BuildProfile::Release {
-            return Err(Error::project(
-                "Steam Workshop packaging requires a release artifact",
-            ));
-        }
-        Ok(Self(artifact))
-    }
 }
 
 #[derive(Debug)]
@@ -83,44 +38,38 @@ pub struct InstallResult {
     pub warnings: Vec<String>,
 }
 
-/// Builds an isolated artifact from a validated project.
-pub fn build(validated: &ValidatedProject<'_>, profile: BuildProfile) -> Result<BuildArtifact> {
-    let project = validated.project;
+/// Builds an isolated local development artifact from a validated project.
+pub fn build(validated: &ValidatedProject<'_>) -> Result<DevelopmentArtifact> {
     let metadata = &validated.metadata;
     let output = validated.layout.output_root()?;
-    let destination = output.join(profile.name()).join(&metadata.id);
+    let destination = output.join("dev").join(&metadata.id);
     let staging = staging_path(
-        destination.parent().expect("profile directory"),
+        destination.parent().expect("development output directory"),
         &metadata.id,
     );
 
     remove_tree_if_exists(&staging)?;
     fs::create_dir_all(&staging).map_err(Error::io)?;
     let result = (|| {
-        copy_mod_source(project, &staging)?;
-        copy_public_assets(validated, &staging)?;
-        for included in &project.config.release.include {
-            let (relative, source) = validated.layout.included(included)?;
-            if source.is_file() {
-                copy_file(&source, &staging.join(relative))?;
-            }
-        }
+        assemble_mod(validated, &staging)?;
         atomic_replace(&staging, &destination)
     })();
     if result.is_err() {
         let _ = remove_tree_if_exists(&staging);
     }
     let replacement = result?;
-    Ok(BuildArtifact {
+    Ok(DevelopmentArtifact {
         path: destination,
         mod_id: metadata.id.clone(),
-        profile,
         warnings: replacement.cleanup_warning.into_iter().collect(),
     })
 }
 
 /// Installs an artifact into a local Project Zomboid mods root.
-pub fn install(artifact: &BuildArtifact, configured_root: Option<&Path>) -> Result<InstallResult> {
+pub fn install(
+    artifact: &DevelopmentArtifact,
+    configured_root: Option<&Path>,
+) -> Result<InstallResult> {
     let root = match configured_root {
         Some(path) if path.is_absolute() => path.to_path_buf(),
         Some(path) => std::env::current_dir().map_err(Error::io)?.join(path),
@@ -160,7 +109,8 @@ pub fn clean(project: &Project) -> Result<CleanResult> {
 }
 
 /// Maps the source-oriented project tree into each configured game build.
-fn copy_mod_source(project: &Project, destination: &Path) -> Result<()> {
+pub(crate) fn assemble_mod(validated: &ValidatedProject<'_>, destination: &Path) -> Result<()> {
+    let project = validated.project;
     let source_root = ProjectLayout::new(project)?.source_root()?;
     for build in &project.config.project.builds {
         let build_root = destination.join(build);
@@ -176,15 +126,6 @@ fn copy_mod_source(project: &Project, destination: &Path) -> Result<()> {
                 copy_tree(&source, &media_root.join("lua").join(scope))?;
             }
         }
-    }
-    Ok(())
-}
-
-/// Copies assets required by build and package workflows.
-fn copy_public_assets(validated: &ValidatedProject<'_>, destination: &Path) -> Result<()> {
-    let public = validated.layout.public_root()?;
-    for name in ["preview.png", "workshop.txt"] {
-        copy_file(&public.join(name), &destination.join(name))?;
     }
     Ok(())
 }
