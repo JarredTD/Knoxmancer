@@ -74,7 +74,7 @@ pub enum Command {
     New(NewArgs),
     /// Adopts an existing mod project without rewriting game metadata.
     Init(InitArgs),
-    /// Reports local game paths and external tool availability.
+    /// Reports Git availability and the local mods path.
     Doctor(DoctorArgs),
     /// Validates project structure, metadata, and assets.
     Check(CheckArgs),

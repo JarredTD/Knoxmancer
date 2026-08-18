@@ -6,7 +6,7 @@ is not affiliated with The Indie Stone.
 ## Install
 
 ```sh
-cargo install --path . --locked
+cargo install --git https://github.com/JarredTD/Knoxmancer --tag v0.1.0 --locked
 ```
 
 This installs `knoxmancer` and its `km` alias.
@@ -16,7 +16,7 @@ This installs `knoxmancer` and its `km` alias.
 ```text
 km new <directory>       Create a Build 42 project
 km init                  Adopt the current project
-km doctor                Inspect local tools and paths
+km doctor                Inspect the local environment
 km check                 Validate a project
 km build                 Build a readable artifact
 km build --release       Build a release artifact
@@ -31,5 +31,5 @@ stored in `knoxmancer.toml`. Artifacts are written under `dist/dev`,
 
 Use `--format json` for versioned newline-delimited JSON output.
 
-Commits use a single-line Conventional Commit subject. The project is licensed
-under the GNU Affero General Public License v3; see `LICENSE`.
+The project is licensed under the GNU Affero General Public License v3; see
+`LICENSE`.

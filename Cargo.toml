@@ -5,6 +5,9 @@ edition = "2024"
 rust-version = "1.85"
 description = "Project Zomboid mod development CLI"
 license = "AGPL-3.0"
+repository = "https://github.com/JarredTD/Knoxmancer"
+readme = "README.md"
+publish = false
 
 [[bin]]
 name = "knoxmancer"

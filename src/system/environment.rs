@@ -1,4 +1,4 @@
-//! Host environment discovery and external tool inspection.
+//! Host environment discovery.
 
 use std::env;
 use std::path::PathBuf;
