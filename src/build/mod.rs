@@ -98,23 +98,21 @@ pub fn clean(project: &Project) -> Result<CleanResult> {
     })
 }
 
-/// Maps the source-oriented project tree into each configured game build.
+/// Maps the source-oriented project tree into the configured game build.
 pub(crate) fn assemble_mod(validated: &ValidatedProject<'_>, destination: &Path) -> Result<()> {
     let project = validated.project;
     let source_root = ProjectLayout::new(project)?.source_root()?;
-    for build in &project.config.project.builds {
-        let build_root = destination.join(build);
-        let media_root = build_root.join("media");
-        copy_file(&source_root.join("mod.info"), &build_root.join("mod.info"))?;
-        let media = source_root.join("media");
-        if media.is_dir() {
-            copy_tree(&media, &media_root)?;
-        }
-        for scope in ["client", "shared", "server"] {
-            let source = source_root.join(scope);
-            if source.is_dir() {
-                copy_tree(&source, &media_root.join("lua").join(scope))?;
-            }
+    let build_root = destination.join(&project.config.project.build);
+    let media_root = build_root.join("media");
+    copy_file(&source_root.join("mod.info"), &build_root.join("mod.info"))?;
+    let media = source_root.join("media");
+    if media.is_dir() {
+        copy_tree(&media, &media_root)?;
+    }
+    for scope in ["client", "shared", "server"] {
+        let source = source_root.join(scope);
+        if source.is_dir() {
+            copy_tree(&source, &media_root.join("lua").join(scope))?;
         }
     }
     Ok(())
@@ -124,6 +122,7 @@ pub(crate) fn assemble_mod(validated: &ValidatedProject<'_>, destination: &Path)
 mod tests {
     use super::*;
     use crate::project::config::Config;
+    use crate::project::validation::{self, ValidationTarget};
     use tempfile::tempdir;
 
     fn project(root: &Path) -> Project {
@@ -139,5 +138,35 @@ mod tests {
         let mut value = project(temporary.path());
         value.config.paths.output = PathBuf::from("src/output");
         assert!(clean(&value).is_err());
+    }
+
+    #[test]
+    fn install_rejects_an_unsafe_artifact_id() {
+        let temporary = tempdir().unwrap();
+        let artifact = DevelopmentArtifact {
+            path: temporary.path().join("artifact"),
+            mod_id: "../outside".to_owned(),
+            warnings: Vec::new(),
+        };
+        assert!(install(&artifact, Some(temporary.path())).is_err());
+    }
+
+    #[test]
+    fn failed_build_removes_its_staging_tree() {
+        let temporary = tempdir().unwrap();
+        let value = project(temporary.path());
+        fs::create_dir(temporary.path().join("src")).unwrap();
+        let metadata = temporary.path().join("src/mod.info");
+        fs::write(&metadata, "name=Example\nid=Example\nmodversion=1.0.0\n").unwrap();
+        let validated = validation::check(&value, ValidationTarget::Playable).unwrap();
+        fs::remove_file(metadata).unwrap();
+
+        assert!(build(&validated).is_err());
+        assert_eq!(
+            fs::read_dir(temporary.path().join("dist/dev"))
+                .unwrap()
+                .count(),
+            0
+        );
     }
 }

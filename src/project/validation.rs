@@ -44,23 +44,14 @@ pub fn check(project: &Project, target: ValidationTarget) -> Result<ValidatedPro
     let mut problems = Vec::new();
     let source_root = layout.source_root()?;
     let mut metadata = Vec::new();
-
-    if project.config.project.builds.is_empty() {
+    let build = &project.config.project.build;
+    if build != "42" {
         problems.push(Diagnostic::at(
-            "project.builds.empty",
+            "project.build.unsupported",
             project.root.join("knoxmancer.toml"),
-            "project.builds must not be empty",
+            format!("unsupported Project Zomboid build: {build}"),
         ));
-    }
-    for build in &project.config.project.builds {
-        if build != "42" {
-            problems.push(Diagnostic::at(
-                "project.build.unsupported",
-                project.root.join("knoxmancer.toml"),
-                format!("unsupported Project Zomboid build: {build}"),
-            ));
-            continue;
-        }
+    } else {
         let path = source_root.join("mod.info");
         match read_metadata(&path, build) {
             Ok(value) => metadata.push(value),
@@ -68,28 +59,6 @@ pub fn check(project: &Project, target: ValidationTarget) -> Result<ValidatedPro
         }
     }
 
-    if let Some(first) = metadata.first() {
-        for value in &metadata[1..] {
-            if value.id != first.id {
-                problems.push(Diagnostic::new(
-                    "metadata.id.mismatch",
-                    format!(
-                        "{} build metadata uses ID {}, expected {}",
-                        value.build, value.id, first.id
-                    ),
-                ));
-            }
-            if value.version != first.version {
-                problems.push(Diagnostic::new(
-                    "metadata.version.mismatch",
-                    format!(
-                        "{} build metadata uses version {}, expected {}",
-                        value.build, value.version, first.version
-                    ),
-                ));
-            }
-        }
-    }
     validate_source_layout(&source_root, &mut problems);
     let workshop = if target == ValidationTarget::Workshop {
         let workshop = validate_public(project, &mut problems);
@@ -105,7 +74,7 @@ pub fn check(project: &Project, target: ValidationTarget) -> Result<ValidatedPro
     let result = metadata
         .into_iter()
         .next()
-        .ok_or_else(|| Error::validation("no mod metadata was found"))?;
+        .expect("successful validation produces mod metadata");
     Ok(ValidatedProject {
         project,
         layout,
@@ -174,7 +143,17 @@ fn validate_public(project: &Project, problems: &mut Vec<Diagnostic>) -> Option<
         return None;
     }
     match workshop::parse(&workshop_path) {
-        Ok(metadata) => Some(metadata),
+        Ok(metadata) => {
+            let required = format!("Build {}", project.config.project.build);
+            if !metadata.tags.iter().any(|tag| tag == &required) {
+                problems.push(Diagnostic::at(
+                    "workshop.tag.build_missing",
+                    &workshop_path,
+                    format!("required Workshop tag is missing: {required}"),
+                ));
+            }
+            Some(metadata)
+        }
         Err(diagnostics) => {
             problems.extend(diagnostics);
             None
@@ -212,11 +191,8 @@ fn validate_package(project: &Project, problems: &mut Vec<Diagnostic>) {
                 ),
             ));
         }
-        if project.config.project.builds.iter().any(|build| {
-            included
-                .components()
-                .next()
-                .is_some_and(|component| component.as_os_str() == std::ffi::OsStr::new(build))
+        if included.components().next().is_some_and(|component| {
+            component.as_os_str() == std::ffi::OsStr::new(&project.config.project.build)
         }) {
             problems.push(Diagnostic::at(
                 "package.include.build_collision",
@@ -265,23 +241,14 @@ mod tests {
     }
 
     #[test]
-    fn rejects_empty_and_unsupported_build_sets() {
+    fn rejects_unsupported_builds() {
         let temporary = tempdir().unwrap();
         let mut value = valid_project(temporary.path());
-        value.config.project.builds.push("41".to_owned());
+        value.config.project.build = "41".to_owned();
         let error = check(&value, ValidationTarget::Playable)
             .unwrap_err()
             .to_string();
         assert!(error.contains("unsupported Project Zomboid build: 41"));
-
-        value.config.project.builds = vec!["../outside".to_owned()];
-        let error = check(&value, ValidationTarget::Playable)
-            .unwrap_err()
-            .to_string();
-        assert!(error.contains("unsupported Project Zomboid build: ../outside"));
-
-        value.config.project.builds.clear();
-        assert!(check(&value, ValidationTarget::Playable).is_err());
     }
 
     #[test]
@@ -348,6 +315,35 @@ mod tests {
         fs::remove_file(temporary.path().join("public/description.md")).unwrap();
         assert!(check(&value, ValidationTarget::Workshop).is_err());
         assert!(home_directory().is_some());
+    }
+
+    #[test]
+    fn reports_missing_workshop_metadata_and_preview() {
+        let temporary = tempdir().unwrap();
+        let value = valid_project(temporary.path());
+        fs::remove_file(temporary.path().join("public/preview.png")).unwrap();
+        fs::remove_file(temporary.path().join("public/workshop.txt")).unwrap();
+
+        let error = check(&value, ValidationTarget::Workshop)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("preview.png"));
+        assert!(error.contains("workshop.txt"));
+    }
+
+    #[test]
+    fn requires_a_tag_for_each_configured_build() {
+        let temporary = tempdir().unwrap();
+        let value = valid_project(temporary.path());
+        fs::write(
+            temporary.path().join("public/workshop.txt"),
+            "version=1\nid=0\ntitle=Example\n{{DESCRIPTION}}\ntags=Multiplayer\nvisibility=private\n",
+        )
+        .unwrap();
+        let error = check(&value, ValidationTarget::Workshop)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("required Workshop tag is missing: Build 42"));
     }
 
     #[test]

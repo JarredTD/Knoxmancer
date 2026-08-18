@@ -43,7 +43,7 @@ optional files included with Workshop packages:
 manifest_version = 1
 
 [project]
-builds = ["42"]
+build = "42"
 
 [paths]
 source = "src"

@@ -41,14 +41,14 @@ impl Default for Config {
 #[serde(default, deny_unknown_fields)]
 /// Project Zomboid build configuration.
 pub struct ProjectConfig {
-    /// Project Zomboid build directories generated in artifacts.
-    pub builds: Vec<String>,
+    /// Project Zomboid build directory generated in artifacts.
+    pub build: String,
 }
 
 impl Default for ProjectConfig {
     fn default() -> Self {
         Self {
-            builds: vec!["42".to_owned()],
+            build: "42".to_owned(),
         }
     }
 }
@@ -150,9 +150,13 @@ mod tests {
     fn defaults_are_build_42_and_conventional_paths() {
         let config: Config = toml::from_str("").unwrap();
         assert_eq!(config.manifest_version, MANIFEST_VERSION);
-        assert_eq!(config.project.builds, ["42"]);
+        assert_eq!(config.project.build, "42");
         assert_eq!(config.paths.source, PathBuf::from("src"));
         assert_eq!(config.paths.output, PathBuf::from("dist"));
+
+        let configured: Config = toml::from_str("[project]\nbuild = '41'\n").unwrap();
+        assert_eq!(configured.project.build, "41");
+        assert!(toml::from_str::<Config>("[project]\nbuilds = ['42']\n").is_err());
     }
 
     #[test]

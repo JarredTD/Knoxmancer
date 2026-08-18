@@ -142,20 +142,10 @@ fn report_warnings(warnings: &[String], reporter: &Reporter) {
     }
 }
 
-/// Reports the validated mod identity, version, and supported builds.
+/// Reports the validated mod identity, version, and supported build.
 fn report_checked(validated: &ValidatedProject<'_>, reporter: &Reporter) {
     reporter.status(&format!(
-        "Checked {} {} ({})",
-        validated.metadata.name,
-        validated.metadata.version,
-        validated
-            .project
-            .config
-            .project
-            .builds
-            .iter()
-            .map(|build| format!("Build {build}"))
-            .collect::<Vec<_>>()
-            .join(", ")
+        "Checked {} {} (Build {})",
+        validated.metadata.name, validated.metadata.version, validated.project.config.project.build
     ));
 }
