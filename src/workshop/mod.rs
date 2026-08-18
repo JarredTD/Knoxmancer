@@ -34,9 +34,7 @@ pub(crate) fn package(validated: &ValidatedProject<'_>) -> Result<PackageResult>
         assemble_mod(validated, &mod_root)?;
         for included in &project.config.package.include {
             let (relative, source) = validated.layout.included(included)?;
-            if source.is_file() {
-                copy_file(&source, &mod_root.join(relative))?;
-            }
+            copy_file(&source, &mod_root.join(relative))?;
         }
         let public = validated.layout.public_root()?;
         copy_file(&public.join("preview.png"), &staging.join("preview.png"))?;
@@ -96,4 +94,43 @@ pub(crate) struct StageResult {
     pub path: PathBuf,
     /// Non-fatal cleanup warnings produced during replacement.
     pub warnings: Vec<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::project::config::Project;
+    use crate::project::validation::{self, ValidationTarget};
+    use crate::scaffold::{self, NewProjectOptions};
+    use tempfile::tempdir;
+
+    #[test]
+    fn failed_package_removes_its_staging_tree() {
+        let temporary = tempdir().unwrap();
+        let root = temporary.path().join("project");
+        scaffold::new_project(&NewProjectOptions {
+            directory: root.clone(),
+            name: None,
+            id: None,
+            author: Some("Tester".to_owned()),
+        })
+        .unwrap();
+        let project = Project::load(&root).unwrap();
+        let validated = validation::check(&project, ValidationTarget::Workshop).unwrap();
+        fs::remove_file(root.join("public/preview.png")).unwrap();
+
+        assert!(package(&validated).is_err());
+        assert_eq!(fs::read_dir(root.join("dist/workshop")).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn stage_rejects_an_unsafe_package_id() {
+        let temporary = tempdir().unwrap();
+        let package = PackageResult {
+            path: temporary.path().join("package"),
+            mod_id: "../outside".to_owned(),
+            warnings: Vec::new(),
+        };
+        assert!(stage(&package, Some(temporary.path())).is_err());
+    }
 }

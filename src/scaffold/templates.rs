@@ -48,4 +48,12 @@ mod tests {
         );
         assert_eq!(rendered, "name={{id}} id=Example keep={{UNKNOWN}}");
     }
+
+    #[test]
+    fn preserves_an_unterminated_marker() {
+        assert_eq!(
+            render("before {{name", &[("name", "Example")]),
+            "before {{name"
+        );
+    }
 }

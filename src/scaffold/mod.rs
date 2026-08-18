@@ -226,6 +226,21 @@ mod tests {
     }
 
     #[test]
+    fn creates_a_project_in_an_existing_empty_directory() {
+        let temporary = tempdir().unwrap();
+        let root = temporary.path().join("existing-empty");
+        fs::create_dir(&root).unwrap();
+        let args = NewProjectOptions {
+            directory: root.clone(),
+            name: None,
+            id: None,
+            author: None,
+        };
+
+        assert_eq!(new_project(&args).unwrap().root, root);
+    }
+
+    #[test]
     fn rejects_invalid_scaffold_destinations() {
         let temporary = tempdir().unwrap();
         let file = temporary.path().join("file");

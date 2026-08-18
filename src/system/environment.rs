@@ -8,7 +8,7 @@ use crate::error::{Error, Result};
 /// Resolves the current user's home directory from platform environment variables.
 pub(crate) fn home_directory() -> Option<PathBuf> {
     env::var_os("USERPROFILE")
-        .or_else(|| env::var_os("HOME"))
+        .or(env::var_os("HOME"))
         .map(PathBuf::from)
 }
 
