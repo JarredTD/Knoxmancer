@@ -129,7 +129,11 @@ pub struct PathsArgs {}
 
 #[derive(Debug, Args, Default)]
 /// Arguments for project validation.
-pub struct CheckArgs {}
+pub struct CheckArgs {
+    /// Also validates Workshop metadata, assets, and package inputs.
+    #[arg(long)]
+    pub workshop: bool,
+}
 
 #[derive(Debug, Args, Default)]
 /// Arguments for artifact construction.

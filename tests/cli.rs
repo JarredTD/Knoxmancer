@@ -314,6 +314,11 @@ fn scopes_validation_to_the_requested_artifact() {
     fs::write(&preview, b"not a png").unwrap();
     assert!(km(&["--project", path(&project), "check"]).status.success());
     assert!(
+        !km(&["--project", path(&project), "check", "--workshop"])
+            .status
+            .success()
+    );
+    assert!(
         !km(&["--project", path(&project), "package"])
             .status
             .success()

@@ -24,6 +24,7 @@ This installs `knoxmancer` and its `km` alias.
 | `km init` | Adopt the current source-oriented project |
 | `km paths` | Show resolved artifact, installation, and staging paths |
 | `km check` | Validate the playable mod |
+| `km check --workshop` | Validate all Workshop publishing inputs without building |
 | `km build` | Build under `dist/dev` |
 | `km install` | Build and install under `~/Zomboid/mods` for local play |
 | `km package` | Build a Workshop project under `dist/workshop` |

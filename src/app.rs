@@ -23,9 +23,14 @@ pub(crate) fn run(cli: Cli, reporter: &Reporter) -> Result<()> {
             paths(&project, reporter)?;
             Ok(())
         }
-        Command::Check(_) => {
+        Command::Check(args) => {
             let project = discover(project_start.as_deref())?;
-            let validated = validation::check(&project, ValidationTarget::Playable)?;
+            let target = if args.workshop {
+                ValidationTarget::Workshop
+            } else {
+                ValidationTarget::Playable
+            };
+            let validated = validation::check(&project, target)?;
             report_checked(&validated, reporter);
             Ok(())
         }
