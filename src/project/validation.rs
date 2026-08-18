@@ -4,9 +4,6 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use regex::Regex;
-use walkdir::WalkDir;
-
 use super::config::Project;
 use super::diagnostic::Diagnostic;
 use super::layout::ProjectLayout;
@@ -29,8 +26,17 @@ pub struct ValidatedProject<'a> {
     pub metadata: ModMetadata,
 }
 
-/// Validates project structure and optionally publishing inputs.
-pub fn check(project: &Project, release: bool) -> Result<ValidatedProject<'_>> {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Artifact requirements applied while validating a project.
+pub(crate) enum ValidationTarget {
+    /// Requirements needed to build and install the playable mod.
+    Playable,
+    /// Playable requirements plus Workshop metadata and publishing inputs.
+    Workshop,
+}
+
+/// Validates a project for the requested artifact target.
+pub fn check(project: &Project, target: ValidationTarget) -> Result<ValidatedProject<'_>> {
     let layout = ProjectLayout::new(project)?;
     let mut problems = Vec::new();
     let source_root = layout.source_root()?;
@@ -80,12 +86,10 @@ pub fn check(project: &Project, release: bool) -> Result<ValidatedProject<'_>> {
                 ));
             }
         }
-        validate_changelog(&project.root, &first.version, &mut problems);
     }
-    validate_public(project, &mut problems);
     validate_source_layout(&source_root, &mut problems);
-    validate_translations(&source_root, &mut problems);
-    if release {
+    if target == ValidationTarget::Workshop {
+        validate_public(project, &mut problems);
         validate_release(project, &mut problems);
     }
 
@@ -112,34 +116,6 @@ fn validate_source_layout(source_root: &Path, problems: &mut Vec<Diagnostic>) {
             reserved,
             "place Lua under src/client, src/shared, or src/server",
         ));
-    }
-}
-
-/// Verifies the first changelog release matches the mod version.
-fn validate_changelog(root: &Path, version: &str, problems: &mut Vec<Diagnostic>) {
-    let path = root.join("CHANGELOG.md");
-    match fs::read_to_string(&path) {
-        Ok(source) => {
-            let heading = Regex::new(r"(?m)^## (\d+\.\d+\.\d+)\s*$").expect("valid regex");
-            match heading.captures(&source).and_then(|capture| capture.get(1)) {
-                Some(found) if found.as_str() == version => {}
-                Some(found) => problems.push(Diagnostic::at(
-                    "changelog.version.mismatch",
-                    &path,
-                    format!("first release is {}, expected {version}", found.as_str()),
-                )),
-                None => problems.push(Diagnostic::at(
-                    "changelog.version.missing",
-                    &path,
-                    format!("add `## {version}` as the first release"),
-                )),
-            }
-        }
-        Err(error) => problems.push(Diagnostic::at(
-            "changelog.unreadable",
-            path,
-            error.to_string(),
-        )),
     }
 }
 
@@ -189,42 +165,6 @@ fn validate_public(project: &Project, problems: &mut Vec<Diagnostic>) {
     let workshop_path = public.join("workshop.txt");
     if workshop_path.is_file() {
         problems.extend(workshop::validate(&workshop_path));
-    }
-}
-
-/// Validates JSON translation files under game-facing translation directories.
-fn validate_translations(source_root: &Path, problems: &mut Vec<Diagnostic>) {
-    for entry in WalkDir::new(source_root) {
-        let entry = match entry {
-            Ok(entry) => entry,
-            Err(error) => {
-                problems.push(Diagnostic::new(
-                    "translation.walk.failed",
-                    format!("could not inspect translations: {error}"),
-                ));
-                continue;
-            }
-        };
-        let path = entry.path();
-        if path
-            .extension()
-            .is_some_and(|extension| extension == "json")
-            && path
-                .components()
-                .any(|part| part.as_os_str() == "Translate")
-        {
-            match fs::read_to_string(path)
-                .ok()
-                .and_then(|source| serde_json::from_str::<serde_json::Value>(&source).ok())
-            {
-                Some(serde_json::Value::Object(_)) => {}
-                _ => problems.push(Diagnostic::at(
-                    "translation.invalid_json",
-                    path,
-                    "translation must be a valid JSON object",
-                )),
-            }
-        }
     }
 }
 
@@ -314,37 +254,19 @@ mod tests {
         let temporary = tempdir().unwrap();
         let mut value = valid_project(temporary.path());
         value.config.project.builds.push("41".to_owned());
-        let error = check(&value, false).unwrap_err().to_string();
+        let error = check(&value, ValidationTarget::Playable)
+            .unwrap_err()
+            .to_string();
         assert!(error.contains("unsupported Project Zomboid build: 41"));
 
         value.config.project.builds = vec!["../outside".to_owned()];
-        let error = check(&value, false).unwrap_err().to_string();
+        let error = check(&value, ValidationTarget::Playable)
+            .unwrap_err()
+            .to_string();
         assert!(error.contains("unsupported Project Zomboid build: ../outside"));
 
         value.config.project.builds.clear();
-        assert!(check(&value, false).is_err());
-    }
-
-    #[test]
-    fn validates_changelog_failure_modes() {
-        let temporary = tempdir().unwrap();
-        let mut problems = Vec::new();
-        validate_changelog(temporary.path(), "1.0.0", &mut problems);
-        assert_eq!(problems.len(), 1);
-        fs::write(temporary.path().join("CHANGELOG.md"), "no releases").unwrap();
-        validate_changelog(temporary.path(), "1.0.0", &mut problems);
-        assert!(
-            problems
-                .iter()
-                .any(|problem| problem.to_string().contains("add `## 1.0.0`"))
-        );
-        fs::write(temporary.path().join("CHANGELOG.md"), "## 0.9.0\n").unwrap();
-        validate_changelog(temporary.path(), "1.0.0", &mut problems);
-        assert!(
-            problems
-                .iter()
-                .any(|problem| problem.to_string().contains("expected 1.0.0"))
-        );
+        assert!(check(&value, ValidationTarget::Playable).is_err());
     }
 
     #[test]
@@ -397,7 +319,7 @@ mod tests {
         let value = valid_project(temporary.path());
 
         fs::remove_file(temporary.path().join("public/description.md")).unwrap();
-        assert!(check(&value, false).is_err());
+        assert!(check(&value, ValidationTarget::Workshop).is_err());
         assert!(home_directory().is_some());
     }
 
@@ -406,7 +328,9 @@ mod tests {
         let temporary = tempdir().unwrap();
         let value = valid_project(temporary.path());
         fs::create_dir_all(temporary.path().join("src/media/lua/client")).unwrap();
-        let error = check(&value, false).unwrap_err().to_string();
+        let error = check(&value, ValidationTarget::Playable)
+            .unwrap_err()
+            .to_string();
         assert!(error.contains("src/client, src/shared, or src/server"));
     }
 }

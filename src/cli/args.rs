@@ -18,20 +18,12 @@ pub struct Cli {
     pub project: Option<PathBuf>,
 
     /// Suppresses non-error output.
-    #[arg(short, long, global = true, conflicts_with = "verbose")]
+    #[arg(short, long, global = true)]
     pub quiet: bool,
-
-    /// Shows additional filesystem and tool details.
-    #[arg(short, long, global = true, conflicts_with = "quiet")]
-    pub verbose: bool,
 
     /// Controls ANSI color in human-readable diagnostics.
     #[arg(long, global = true, value_enum, default_value_t = ColorChoice::Auto)]
     pub color: ColorChoice,
-
-    /// Selects human-readable or versioned newline-delimited JSON output.
-    #[arg(long, global = true, value_enum, default_value_t = OutputFormat::Human)]
-    pub format: OutputFormat,
 
     #[command(subcommand)]
     /// Operation selected by the user.
@@ -43,9 +35,7 @@ impl Cli {
     pub fn output_options(&self) -> OutputOptions {
         OutputOptions {
             quiet: self.quiet,
-            verbose: self.verbose,
             color: self.color,
-            format: self.format,
         }
     }
 }
@@ -55,12 +45,8 @@ impl Cli {
 pub struct OutputOptions {
     /// Suppresses successful status messages.
     pub quiet: bool,
-    /// Enables additional operational detail.
-    pub verbose: bool,
     /// Controls ANSI color in human-readable errors.
     pub color: ColorChoice,
-    /// Selects human-readable or structured output.
-    pub format: OutputFormat,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -72,15 +58,6 @@ pub enum ColorChoice {
     Always,
     /// Never emits ANSI color escapes.
     Never,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
-/// Serialization format for command events.
-pub enum OutputFormat {
-    /// Concise messages intended for a terminal.
-    Human,
-    /// Versioned newline-delimited JSON events.
-    Json,
 }
 
 #[derive(Debug, Subcommand)]
@@ -98,8 +75,10 @@ pub enum Command {
     Build(BuildArgs),
     /// Builds and installs the mod for local play.
     Install(InstallArgs),
-    /// Creates and optionally stages a verified Workshop upload project.
+    /// Creates a verified Workshop upload project under the output directory.
     Package(PackageArgs),
+    /// Packages and stages the mod for Zomboid's Workshop uploader.
+    Stage(StageArgs),
     /// Removes Knoxmancer-generated artifacts.
     Clean(CleanArgs),
 }
@@ -137,11 +116,7 @@ pub struct DoctorArgs {}
 
 #[derive(Debug, Args, Default)]
 /// Arguments for project validation.
-pub struct CheckArgs {
-    #[arg(long)]
-    /// Enables checks required for publishing artifacts.
-    pub release: bool,
-}
+pub struct CheckArgs {}
 
 #[derive(Debug, Args, Default)]
 /// Arguments for artifact construction.
@@ -156,12 +131,13 @@ pub struct InstallArgs {
 }
 
 #[derive(Debug, Args, Default)]
-/// Arguments for Workshop project construction and uploader staging.
-pub struct PackageArgs {
-    #[arg(long)]
-    /// Stages the project in the user's Zomboid Workshop directory.
-    pub stage: bool,
-    #[arg(long, value_name = "PATH", requires = "stage")]
+/// Arguments for Workshop project construction.
+pub struct PackageArgs {}
+
+#[derive(Debug, Args, Default)]
+/// Arguments for staging a Workshop project for Zomboid's uploader.
+pub struct StageArgs {
+    #[arg(long, value_name = "PATH")]
     /// Overrides the default Zomboid Workshop projects directory.
     pub root: Option<PathBuf>,
 }

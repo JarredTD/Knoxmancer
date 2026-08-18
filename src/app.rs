@@ -4,6 +4,7 @@ use crate::build::{self, DevelopmentArtifact};
 use crate::cli::Reporter;
 use crate::cli::{Cli, Command, NewArgs};
 use crate::error::Result;
+use crate::project::validation::ValidationTarget;
 use crate::project::{Project, ValidatedProject, config, validation};
 use crate::scaffold::{self, NewProjectOptions};
 
@@ -23,9 +24,9 @@ pub(crate) fn run(cli: Cli, reporter: &Reporter) -> Result<()> {
             }
             Ok(())
         }
-        Command::Check(args) => {
+        Command::Check(_) => {
             let project = discover(project_start.as_deref())?;
-            let validated = validation::check(&project, args.release)?;
+            let validated = validation::check(&project, ValidationTarget::Playable)?;
             report_checked(&validated, reporter);
             Ok(())
         }
@@ -38,28 +39,38 @@ pub(crate) fn run(cli: Cli, reporter: &Reporter) -> Result<()> {
             let built = build(&project, reporter)?;
             let installed = build::install(&built, args.root.as_deref())?;
             report_warnings(&installed.warnings, reporter);
-            reporter.status(&format!("Installed {}", installed.path.display()));
+            reporter.status(&format!(
+                "Installed for local play: {}",
+                installed.path.display()
+            ));
+            reporter.status("Next: enable the mod in Project Zomboid.");
             Ok(())
         }
-        Command::Package(args) => {
+        Command::Package(_) => {
             let project = discover(project_start.as_deref())?;
-            let validated = validation::check(&project, true)?;
+            let validated = validation::check(&project, ValidationTarget::Workshop)?;
             report_checked(&validated, reporter);
-            reporter.verbose("Staging Workshop artifact with atomic replacement");
             let packaged = crate::workshop::package(&validated)?;
             report_warnings(&packaged.warnings, reporter);
             reporter.status(&format!(
                 "Packaged Workshop project: {}",
                 packaged.path.display()
             ));
-            if args.stage {
-                let staged = crate::workshop::stage(&packaged, args.root.as_deref())?;
-                report_warnings(&staged.warnings, reporter);
-                reporter.status(&format!(
-                    "Staged Workshop project: {}",
-                    staged.path.display()
-                ));
-            }
+            Ok(())
+        }
+        Command::Stage(args) => {
+            let project = discover(project_start.as_deref())?;
+            let validated = validation::check(&project, ValidationTarget::Workshop)?;
+            report_checked(&validated, reporter);
+            let packaged = crate::workshop::package(&validated)?;
+            report_warnings(&packaged.warnings, reporter);
+            let staged = crate::workshop::stage(&packaged, args.root.as_deref())?;
+            report_warnings(&staged.warnings, reporter);
+            reporter.status(&format!(
+                "Staged for Workshop upload: {}",
+                staged.path.display()
+            ));
+            reporter.status("Next: open Workshop > Create and update items in Project Zomboid.");
             Ok(())
         }
         Command::Clean(_) => {
@@ -101,9 +112,8 @@ fn new_project(args: NewArgs, reporter: &Reporter) -> Result<()> {
 
 /// Validates and builds a local development artifact.
 fn build(project: &Project, reporter: &Reporter) -> Result<DevelopmentArtifact> {
-    let validated = validation::check(project, false)?;
+    let validated = validation::check(project, ValidationTarget::Playable)?;
     report_checked(&validated, reporter);
-    reporter.verbose("Staging artifact with atomic replacement");
     let artifact = build::build(&validated)?;
     report_warnings(&artifact.warnings, reporter);
     reporter.status(&format!("Built artifact: {}", artifact.path.display()));
@@ -113,7 +123,7 @@ fn build(project: &Project, reporter: &Reporter) -> Result<DevelopmentArtifact> 
 /// Emits non-fatal filesystem cleanup warnings.
 fn report_warnings(warnings: &[String], reporter: &Reporter) {
     for warning in warnings {
-        reporter.status(&format!("Warning: {warning}"));
+        reporter.warning(warning);
     }
 }
 

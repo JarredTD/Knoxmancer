@@ -20,7 +20,7 @@ fn scaffolds_checks_builds_packages_installs_and_cleans() {
     let temporary = tempdir().unwrap();
     let project = temporary.path().join("example-mod");
     let mods = temporary.path().join("mods");
-    let workshop_mods = temporary.path().join("workshop-mods");
+    let workshop_projects = temporary.path().join("workshop-projects");
 
     assert!(
         km(&["new", path(&project), "--author", "Test Author"])
@@ -33,10 +33,9 @@ fn scaffolds_checks_builds_packages_installs_and_cleans() {
         km(&[
             "--project",
             path(&project),
-            "package",
-            "--stage",
+            "stage",
             "--root",
-            path(&workshop_mods),
+            path(&workshop_projects),
         ])
         .status
         .success()
@@ -63,7 +62,7 @@ fn scaffolds_checks_builds_packages_installs_and_cleans() {
     );
     assert!(mods.join("ExampleMod/42/mod.info").is_file());
     assert!(
-        workshop_mods
+        workshop_projects
             .join("ExampleMod/Contents/mods/ExampleMod/42/mod.info")
             .is_file()
     );
@@ -92,20 +91,15 @@ fn initializes_an_existing_mod_without_rewriting_metadata() {
 }
 
 #[test]
-fn emits_versioned_json_errors() {
+fn reports_human_readable_errors() {
     let temporary = tempdir().unwrap();
-    let output = km(&[
-        "--format",
-        "json",
-        "--project",
-        path(temporary.path()),
-        "check",
-    ]);
+    let output = km(&["--project", path(temporary.path()), "check"]);
     assert!(!output.status.success());
-    let event: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(event["schema_version"], 1);
-    assert_eq!(event["status"], "error");
-    assert_eq!(event["kind"], "project");
+    assert!(
+        String::from_utf8(output.stderr)
+            .unwrap()
+            .contains("no knoxmancer.toml found")
+    );
 
     let project = temporary.path().join("diagnostic-mod");
     assert!(
@@ -113,12 +107,14 @@ fn emits_versioned_json_errors() {
             .status
             .success()
     );
-    fs::write(project.join("CHANGELOG.md"), "no release").unwrap();
-    let output = km(&["--format", "json", "--project", path(&project), "check"]);
-    let event: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(event["kind"], "validation");
-    assert_eq!(event["diagnostics"][0]["code"], "changelog.version.missing");
-    assert!(event["diagnostics"][0]["path"].is_string());
+    fs::write(project.join("src/mod.info"), "name=Broken\n").unwrap();
+    let output = km(&["--project", path(&project), "check"]);
+    assert!(!output.status.success());
+    assert!(
+        String::from_utf8(output.stderr)
+            .unwrap()
+            .contains("mod.info")
+    );
 }
 
 #[test]
@@ -138,11 +134,14 @@ fn full_and_short_binaries_expose_the_same_version() {
     let help = km(&["--help"]);
     let help = String::from_utf8(help.stdout).unwrap();
     assert!(help.contains("Creates a complete Project Zomboid mod project"));
-    assert!(help.contains("Creates and optionally stages a verified Workshop upload project"));
+    assert!(help.contains("Creates a verified Workshop upload project"));
+    assert!(help.contains("Packages and stages the mod for Zomboid's Workshop uploader"));
     let package_help = km(&["package", "--help"]);
     let package_help = String::from_utf8(package_help.stdout).unwrap();
-    assert!(package_help.contains("--stage"));
-    assert!(package_help.contains("--root"));
+    assert!(!package_help.contains("--stage"));
+    assert!(!package_help.contains("--root"));
+    let stage_help = String::from_utf8(km(&["stage", "--help"]).stdout).unwrap();
+    assert!(stage_help.contains("--root"));
     let build_help = String::from_utf8(km(&["build", "--help"]).stdout).unwrap();
     let install_help = String::from_utf8(km(&["install", "--help"]).stdout).unwrap();
     assert!(!build_help.contains("--release"));
@@ -160,7 +159,7 @@ fn diagnoses_the_environment_without_a_project() {
 }
 
 #[test]
-fn reports_validation_failures_and_recovers_after_correction() {
+fn scopes_validation_to_the_requested_artifact() {
     let temporary = tempdir().unwrap();
     let project = temporary.path().join("validation-mod");
     assert!(
@@ -169,30 +168,30 @@ fn reports_validation_failures_and_recovers_after_correction() {
             .success()
     );
 
-    let changelog = project.join("CHANGELOG.md");
-    let original_changelog = fs::read_to_string(&changelog).unwrap();
-    fs::write(&changelog, "# Changelog\n\n## 0.0.9\n\n- Old.\n").unwrap();
-    let mismatch = km(&["--project", path(&project), "check"]);
-    assert!(!mismatch.status.success());
-    assert!(
-        String::from_utf8(mismatch.stderr)
-            .unwrap()
-            .contains("expected 0.1.0")
-    );
-    fs::write(&changelog, original_changelog).unwrap();
+    fs::remove_file(project.join("CHANGELOG.md")).unwrap();
+    assert!(km(&["--project", path(&project), "check"]).status.success());
+    assert!(km(&["--project", path(&project), "build"]).status.success());
 
     let preview = project.join("public/preview.png");
     let original_preview = fs::read(&preview).unwrap();
     fs::write(&preview, b"not a png").unwrap();
-    assert!(!km(&["--project", path(&project), "check"]).status.success());
+    assert!(km(&["--project", path(&project), "check"]).status.success());
+    assert!(
+        !km(&["--project", path(&project), "package"])
+            .status
+            .success()
+    );
     fs::write(&preview, original_preview).unwrap();
 
     let translation = project.join("src/shared/Translate/EN/UI.json");
     fs::create_dir_all(translation.parent().unwrap()).unwrap();
     fs::write(&translation, "[]").unwrap();
-    assert!(!km(&["--project", path(&project), "check"]).status.success());
-    fs::write(&translation, "{}").unwrap();
     assert!(km(&["--project", path(&project), "check"]).status.success());
+    assert!(
+        km(&["--project", path(&project), "package"])
+            .status
+            .success()
+    );
 }
 
 #[test]
@@ -276,20 +275,6 @@ fn handles_scaffold_and_output_edge_cases() {
     let quiet = km(&["--quiet", "--project", path(&project), "check"]);
     assert!(quiet.status.success());
     assert!(quiet.stderr.is_empty());
-
-    let json = km(&["--format", "json", "--project", path(&project), "check"]);
-    assert!(json.status.success());
-    let event: serde_json::Value = serde_json::from_slice(&json.stdout).unwrap();
-    assert_eq!(event["schema_version"], 1);
-    assert_eq!(event["status"], "ok");
-
-    let verbose = km(&["--verbose", "--project", path(&project), "build"]);
-    assert!(verbose.status.success());
-    assert!(
-        String::from_utf8(verbose.stderr)
-            .unwrap()
-            .contains("Staging artifact")
-    );
 
     let colored = km(&[
         "--color",

@@ -14,8 +14,6 @@ pub struct Error {
     message: String,
     /// Process exit code returned to the caller.
     exit_code: u8,
-    /// Structured validation details, when applicable.
-    diagnostics: Option<Vec<Diagnostic>>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -41,7 +39,6 @@ impl Error {
             kind: ErrorKind::Usage,
             message: error.to_string(),
             exit_code: error.exit_code().try_into().unwrap_or(2),
-            diagnostics: None,
         }
     }
 
@@ -62,12 +59,7 @@ impl Error {
             .map(ToString::to_string)
             .collect::<Vec<_>>()
             .join("\n");
-        Self {
-            kind: ErrorKind::Validation,
-            message,
-            exit_code: 1,
-            diagnostics: Some(diagnostics),
-        }
+        Self::new(ErrorKind::Validation, message)
     }
 
     /// Converts an I/O error into a Knoxmancer error.
@@ -81,7 +73,6 @@ impl Error {
             kind,
             message: message.into(),
             exit_code: 1,
-            diagnostics: None,
         }
     }
 
@@ -98,11 +89,6 @@ impl Error {
     /// Returns the process exit code associated with the error.
     pub fn exit_code(&self) -> u8 {
         self.exit_code
-    }
-
-    /// Returns structured validation diagnostics when available.
-    pub fn diagnostics(&self) -> Option<&[Diagnostic]> {
-        self.diagnostics.as_deref()
     }
 }
 
