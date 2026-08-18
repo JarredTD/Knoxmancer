@@ -30,12 +30,10 @@ where
         Ok(()) => 0,
         Err(error) => {
             if matches!(error.kind(), error::ErrorKind::Usage) {
-                if error.exit_code() == 0 {
-                    print!("{error}");
-                } else if json {
+                if json && error.exit_code() != 0 {
                     Reporter::json_error(&error);
                 } else {
-                    eprint!("{error}");
+                    Reporter::usage(&error);
                 }
             }
             error.exit_code()

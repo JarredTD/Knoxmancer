@@ -105,6 +105,15 @@ impl Reporter {
             },
         );
     }
+
+    /// Emits a human-readable Clap response while tolerating a closed output pipe.
+    pub fn usage(error: &Error) {
+        if error.exit_code() == 0 {
+            write_raw(std::io::stdout(), error.message());
+        } else {
+            write_raw(std::io::stderr(), error.message());
+        }
+    }
 }
 
 /// A JSON status or warning event.
@@ -147,6 +156,12 @@ struct ErrorEvent<'a> {
 fn write_human(stream: impl Write, message: &str) {
     let mut stream = stream;
     let _ = writeln!(stream, "{message}");
+}
+
+/// Writes text verbatim while tolerating a closed output pipe.
+fn write_raw(stream: impl Write, message: &str) {
+    let mut stream = stream;
+    let _ = stream.write_all(message.as_bytes());
 }
 
 /// Writes one JSON object and newline while tolerating a closed output pipe.
