@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.0
+
+- Author mods from flat `src/client`, `src/shared`, `src/server`, and `src/media` directories.
+- Map the source tree into the Project Zomboid Build 42 artifact layout.
+
 ## 0.1.0
 
 - Scaffold and adopt Project Zomboid Build 42 mod projects.
