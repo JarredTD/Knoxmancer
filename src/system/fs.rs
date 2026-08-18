@@ -396,13 +396,13 @@ fn remove_tree_if_exists_with(filesystem: &impl MutationFs, path: &Path) -> Resu
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
         Err(error) => return Err(Error::io(error)),
     };
-    if is_link_type(&metadata.file_type()) {
+    if is_link_type(metadata.file_type()) {
         return remove_link(filesystem, path, &metadata);
     }
     for entry in WalkDir::new(path).contents_first(true) {
         let entry = entry.map_err(|error| Error::io(io::Error::other(error)))?;
         let metadata = fs::symlink_metadata(entry.path()).map_err(Error::io)?;
-        if !is_link_type(&metadata.file_type()) {
+        if !is_link_type(metadata.file_type()) {
             let mut permissions = metadata.permissions();
             if permissions.readonly() {
                 make_writable(&mut permissions);
@@ -416,26 +416,28 @@ fn remove_tree_if_exists_with(filesystem: &impl MutationFs, path: &Path) -> Resu
 }
 
 /// Removes a symbolic link or Windows directory junction without following it.
-fn remove_link(filesystem: &impl MutationFs, path: &Path, _metadata: &fs::Metadata) -> Result<()> {
+fn remove_link(filesystem: &impl MutationFs, path: &Path, metadata: &fs::Metadata) -> Result<()> {
     #[cfg(windows)]
     {
         use std::os::windows::fs::FileTypeExt;
-        if _metadata.file_type().is_symlink_dir() {
+        if metadata.file_type().is_symlink_dir() {
             return filesystem.remove_dir(path).map_err(Error::io);
         }
     }
+    #[cfg(not(windows))]
+    let _ = metadata;
     filesystem.remove_file(path).map_err(Error::io)
 }
 
 /// Reports whether a path is a symbolic link or Windows reparse-point link.
 fn is_link(path: &Path) -> Result<bool> {
     fs::symlink_metadata(path)
-        .map(|metadata| is_link_type(&metadata.file_type()))
+        .map(|metadata| is_link_type(metadata.file_type()))
         .map_err(Error::io)
 }
 
 /// Reports whether a file type represents a link that must not be traversed.
-fn is_link_type(file_type: &fs::FileType) -> bool {
+fn is_link_type(file_type: fs::FileType) -> bool {
     if file_type.is_symlink() {
         return true;
     }
@@ -466,19 +468,19 @@ pub(crate) fn staging_path(parent: &Path, id: &str) -> PathBuf {
     parent.join(format!(".{id}-staging-{}", unique_token()))
 }
 
-/// Combines wall-clock nanoseconds and process identity for temporary names.
-fn unique_token() -> u128 {
-    static PROCESS_EPOCH: OnceLock<u64> = OnceLock::new();
+/// Combines wall-clock nanoseconds, process identity, and a counter for temporary names.
+fn unique_token() -> String {
+    static PROCESS_EPOCH: OnceLock<u128> = OnceLock::new();
     static COUNTER: AtomicU32 = AtomicU32::new(0);
     let epoch = *PROCESS_EPOCH.get_or_init(|| {
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
-            .as_nanos() as u64
+            .as_nanos()
     });
-    (u128::from(epoch) << 64)
-        | (u128::from(std::process::id()) << 32)
-        | u128::from(COUNTER.fetch_add(1, Ordering::Relaxed))
+    let process = std::process::id();
+    let counter = COUNTER.fetch_add(1, Ordering::Relaxed);
+    format!("{epoch:x}-{process:x}-{counter:x}")
 }
 
 #[cfg(all(test, windows))]
