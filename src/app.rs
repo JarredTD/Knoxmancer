@@ -50,8 +50,9 @@ pub(crate) fn run(cli: Cli, reporter: &Reporter) -> Result<()> {
         Command::Install(args) => {
             let project = discover(project_start.as_deref())?;
             let built = build(&project, profile(args.release), reporter)?;
-            let destination = artifact::install(&built, args.root.as_deref())?;
-            reporter.status(&format!("Installed {}", destination.display()));
+            let installed = artifact::install(&built, args.root.as_deref())?;
+            report_warnings(&installed.warnings, reporter);
+            reporter.status(&format!("Installed {}", installed.path.display()));
             Ok(())
         }
         Command::Package(_) => {
@@ -59,10 +60,12 @@ pub(crate) fn run(cli: Cli, reporter: &Reporter) -> Result<()> {
             let validated = validation::check(&project, true)?;
             report_checked(&validated, reporter);
             let built = build_validated(&validated, BuildProfile::Release, reporter)?;
-            let destination = crate::workshop::package(&validated, &built)?;
+            let release = artifact::ReleaseArtifact::try_from(built)?;
+            let packaged = crate::workshop::package(&validated, &release)?;
+            report_warnings(&packaged.warnings, reporter);
             reporter.status(&format!(
                 "Packaged Workshop artifact: {}",
-                destination.display()
+                packaged.path.display()
             ));
             Ok(())
         }
@@ -117,6 +120,7 @@ fn build_validated(
     for line in &artifact.tool_output {
         reporter.status(line);
     }
+    report_warnings(&artifact.warnings, reporter);
     if profile == BuildProfile::Release && validated.project.config.release.minify.is_some() {
         reporter.status(&format!("Minified {} Lua files", artifact.minified_files));
     }
@@ -126,6 +130,12 @@ fn build_validated(
         artifact.path.display()
     ));
     Ok(artifact)
+}
+
+fn report_warnings(warnings: &[String], reporter: &Reporter) {
+    for warning in warnings {
+        reporter.status(&format!("Warning: {warning}"));
+    }
 }
 
 fn report_checked(validated: &ValidatedProject<'_>, reporter: &Reporter) {

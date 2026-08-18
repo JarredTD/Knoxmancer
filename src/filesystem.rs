@@ -8,6 +8,13 @@ use walkdir::WalkDir;
 
 use crate::error::{Error, Result};
 
+/// Result of replacing a destination, including non-fatal cleanup information.
+#[derive(Debug)]
+pub struct AtomicReplaceResult {
+    /// Warning produced when the old backup could not be removed after replacement.
+    pub cleanup_warning: Option<String>,
+}
+
 pub(crate) fn copy_tree(source: &Path, destination: &Path) -> Result<()> {
     if !source.is_dir() {
         return Err(Error::project(format!(
@@ -50,7 +57,7 @@ pub(crate) fn copy_file(source: &Path, destination: &Path) -> Result<()> {
     })
 }
 
-pub(crate) fn atomic_replace(staging: &Path, destination: &Path) -> Result<()> {
+pub(crate) fn atomic_replace(staging: &Path, destination: &Path) -> Result<AtomicReplaceResult> {
     let parent = destination
         .parent()
         .ok_or_else(|| Error::project("artifact destination has no parent"))?;
@@ -68,11 +75,25 @@ pub(crate) fn atomic_replace(staging: &Path, destination: &Path) -> Result<()> {
     }
     if let Err(error) = fs::rename(staging, destination) {
         if backup.exists() && !destination.exists() {
-            let _ = fs::rename(&backup, destination);
+            if let Err(rollback) = fs::rename(&backup, destination) {
+                return Err(Error::io(std::io::Error::new(
+                    error.kind(),
+                    format!(
+                        "could not install {}: {error}; rollback also failed: {rollback}",
+                        destination.display()
+                    ),
+                )));
+            }
         }
         return Err(Error::io(error));
     }
-    remove_tree_if_exists(&backup)
+    let cleanup_warning = remove_tree_if_exists(&backup).err().map(|error| {
+        format!(
+            "replacement succeeded, but old backup {} could not be removed: {error}",
+            backup.display()
+        )
+    });
+    Ok(AtomicReplaceResult { cleanup_warning })
 }
 
 pub(crate) fn remove_tree_if_exists(path: &Path) -> Result<()> {

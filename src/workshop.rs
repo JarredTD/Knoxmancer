@@ -4,7 +4,7 @@ use std::fs;
 
 use regex::Regex;
 
-use crate::artifact::BuildArtifact;
+use crate::artifact::ReleaseArtifact;
 use crate::config::Project;
 use crate::error::{Error, Result};
 use crate::filesystem::{
@@ -20,10 +20,17 @@ pub(crate) const DESCRIPTION_MAX_BYTES: usize = 8_000;
 
 pub(crate) fn package(
     validated: &ValidatedProject<'_>,
-    release: &BuildArtifact,
-) -> Result<std::path::PathBuf> {
+    release: &ReleaseArtifact,
+) -> Result<PackageResult> {
     let project = validated.project;
     let metadata = &validated.metadata;
+    let release = release.artifact();
+    if release.mod_id != metadata.id {
+        return Err(Error::project(format!(
+            "release artifact ID {} does not match validated mod ID {}",
+            release.mod_id, metadata.id
+        )));
+    }
     let output = validated.layout.output_root()?;
     let destination = output.join("workshop").join(&metadata.id);
     let staging = staging_path(
@@ -71,8 +78,18 @@ pub(crate) fn package(
     if result.is_err() {
         let _ = remove_tree_if_exists(&staging);
     }
-    result?;
-    Ok(destination)
+    let replacement = result?;
+    Ok(PackageResult {
+        path: destination,
+        warnings: replacement.cleanup_warning.into_iter().collect(),
+    })
+}
+
+/// Result of assembling a Steam Workshop upload tree.
+#[derive(Debug)]
+pub(crate) struct PackageResult {
+    pub path: std::path::PathBuf,
+    pub warnings: Vec<String>,
 }
 
 pub(crate) fn render(project: &Project, metadata: &ModMetadata) -> Result<String> {

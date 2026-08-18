@@ -31,12 +31,44 @@ pub struct BuildArtifact {
     pub profile: BuildProfile,
     pub minified_files: usize,
     pub tool_output: Vec<String>,
+    pub warnings: Vec<String>,
+}
+
+/// A build artifact proven to use the release profile.
+#[derive(Debug)]
+pub struct ReleaseArtifact(BuildArtifact);
+
+impl ReleaseArtifact {
+    /// Returns the underlying release build artifact.
+    pub fn artifact(&self) -> &BuildArtifact {
+        &self.0
+    }
+}
+
+impl TryFrom<BuildArtifact> for ReleaseArtifact {
+    type Error = Error;
+
+    fn try_from(artifact: BuildArtifact) -> Result<Self> {
+        if artifact.profile != BuildProfile::Release {
+            return Err(Error::project(
+                "Steam Workshop packaging requires a release artifact",
+            ));
+        }
+        Ok(Self(artifact))
+    }
 }
 
 #[derive(Debug)]
 pub struct CleanResult {
     pub path: PathBuf,
     pub removed: bool,
+}
+
+/// Result of installing an artifact locally.
+#[derive(Debug)]
+pub struct InstallResult {
+    pub path: PathBuf,
+    pub warnings: Vec<String>,
 }
 
 pub fn build(validated: &ValidatedProject<'_>, profile: BuildProfile) -> Result<BuildArtifact> {
@@ -74,17 +106,18 @@ pub fn build(validated: &ValidatedProject<'_>, profile: BuildProfile) -> Result<
     if result.is_err() {
         let _ = remove_tree_if_exists(&staging);
     }
-    result?;
+    let replacement = result?;
     Ok(BuildArtifact {
         path: destination,
         mod_id: metadata.id.clone(),
         profile,
         minified_files,
         tool_output,
+        warnings: replacement.cleanup_warning.into_iter().collect(),
     })
 }
 
-pub fn install(artifact: &BuildArtifact, configured_root: Option<&Path>) -> Result<PathBuf> {
+pub fn install(artifact: &BuildArtifact, configured_root: Option<&Path>) -> Result<InstallResult> {
     let root = match configured_root {
         Some(path) if path.is_absolute() => path.to_path_buf(),
         Some(path) => std::env::current_dir().map_err(Error::io)?.join(path),
@@ -103,8 +136,11 @@ pub fn install(artifact: &BuildArtifact, configured_root: Option<&Path>) -> Resu
     let staging = staging_path(&root, &artifact.mod_id);
     remove_tree_if_exists(&staging)?;
     copy_tree(&artifact.path, &staging)?;
-    atomic_replace(&staging, &destination)?;
-    Ok(destination)
+    let replacement = atomic_replace(&staging, &destination)?;
+    Ok(InstallResult {
+        path: destination,
+        warnings: replacement.cleanup_warning.into_iter().collect(),
+    })
 }
 
 pub fn clean(project: &Project) -> Result<CleanResult> {
