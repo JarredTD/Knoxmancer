@@ -22,7 +22,7 @@ This installs `knoxmancer` and its `km` alias.
 | --- | --- |
 | `km new <directory>` | Create a Build 42 project |
 | `km init` | Adopt the current source-oriented project |
-| `km doctor` | Show the default local and Workshop directories |
+| `km paths` | Show resolved artifact, installation, and staging paths |
 | `km check` | Validate the playable mod |
 | `km build` | Build under `dist/dev` |
 | `km install` | Build and install under `~/Zomboid/mods` for local play |
@@ -40,6 +40,8 @@ creates the upload project; it does not copy it into Zomboid's Workshop folder.
 optional files included with Workshop packages:
 
 ```toml
+manifest_version = 1
+
 [project]
 builds = ["42"]
 
@@ -48,7 +50,7 @@ source = "src"
 public = "public"
 output = "dist"
 
-[release]
+[package]
 include = []
 ```
 
@@ -69,9 +71,11 @@ Knoxmancer maps `client`, `shared`, and `server` into the corresponding
 `public` contains `description.md`, `preview.png`, and `workshop.txt`; `output`
 receives generated artifacts.
 
-Game-facing metadata remains in `mod.info` and `workshop.txt`. `km package` and
-`km stage` validate Workshop metadata, assets, and configured release includes.
-Local checks, builds, and installs do not require Workshop files.
+Game-facing metadata remains in `mod.info` and `workshop.txt`. Package includes
+retain their project-relative paths under `Contents/mods/<ModId>`; for example,
+`LICENSE` becomes `Contents/mods/<ModId>/LICENSE`. `km package` and `km stage`
+validate Workshop metadata, assets, and package includes. Local checks, builds,
+and installs do not require Workshop files.
 
 `km stage --root <path>` overrides the Workshop projects directory.
 `km install --root <path>` similarly overrides the local mods directory.
