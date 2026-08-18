@@ -30,6 +30,7 @@ pub struct BuildArtifact {
     pub mod_id: String,
     pub profile: BuildProfile,
     pub minified_files: usize,
+    pub tool_output: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -51,6 +52,7 @@ pub fn build(validated: &ValidatedProject<'_>, profile: BuildProfile) -> Result<
     remove_tree_if_exists(&staging)?;
     fs::create_dir_all(&staging).map_err(Error::io)?;
     let mut minified_files = 0;
+    let mut tool_output = Vec::new();
     let result = (|| {
         copy_mod_source(project, &staging)?;
         copy_public_assets(validated, &staging)?;
@@ -63,7 +65,9 @@ pub fn build(validated: &ValidatedProject<'_>, profile: BuildProfile) -> Result<
         if profile == BuildProfile::Release
             && let Some(minifier) = &project.config.release.minify
         {
-            minified_files = minify_lua(&staging, minifier)?;
+            let result = minify_lua(&staging, minifier)?;
+            minified_files = result.files;
+            tool_output = result.output;
         }
         atomic_replace(&staging, &destination)
     })();
@@ -76,6 +80,7 @@ pub fn build(validated: &ValidatedProject<'_>, profile: BuildProfile) -> Result<
         mod_id: metadata.id.clone(),
         profile,
         minified_files,
+        tool_output,
     })
 }
 

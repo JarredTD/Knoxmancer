@@ -2,17 +2,25 @@
 
 use std::fs;
 use std::path::Path;
-use std::process::Command;
 
 use walkdir::WalkDir;
 
 use crate::config::MinifyConfig;
 use crate::error::{Error, Result};
+use crate::process;
 
-pub(crate) fn minify_lua(root: &Path, config: &MinifyConfig) -> Result<usize> {
+#[derive(Debug)]
+pub(crate) struct MinifyResult {
+    pub files: usize,
+    pub output: Vec<String>,
+}
+
+pub(crate) fn minify_lua(root: &Path, config: &MinifyConfig) -> Result<MinifyResult> {
     let files: Vec<_> = WalkDir::new(root)
         .into_iter()
-        .filter_map(|entry| entry.ok())
+        .map(|entry| entry.map_err(|error| Error::io(std::io::Error::other(error))))
+        .collect::<Result<Vec<_>>>()?
+        .into_iter()
         .filter(|entry| {
             entry.file_type().is_file()
                 && entry
@@ -22,6 +30,7 @@ pub(crate) fn minify_lua(root: &Path, config: &MinifyConfig) -> Result<usize> {
         })
         .map(|entry| entry.into_path())
         .collect();
+    let mut messages = Vec::new();
     for source in &files {
         let generated = source.with_extension("lua.knoxmancer");
         let arguments: Vec<_> = config
@@ -33,17 +42,17 @@ pub(crate) fn minify_lua(root: &Path, config: &MinifyConfig) -> Result<usize> {
                     .replace("{output}", &generated.to_string_lossy())
             })
             .collect();
-        let status = Command::new(&config.command)
-            .args(&arguments)
-            .status()
-            .map_err(|error| Error::tool(format!("could not run {}: {error}", config.command)))?;
-        if !status.success() {
+        let output = process::run(&config.command, &arguments, None)?;
+        if !output.success() {
             let _ = fs::remove_file(&generated);
             return Err(Error::tool(format!(
-                "minifier failed for {}",
-                source.display()
+                "minifier failed for {} with {}{}",
+                source.display(),
+                output.status_description(),
+                output.failure_detail()
             )));
         }
+        messages.extend(output.lines());
         if config
             .args
             .iter()
@@ -58,5 +67,8 @@ pub(crate) fn minify_lua(root: &Path, config: &MinifyConfig) -> Result<usize> {
             fs::rename(&generated, source).map_err(Error::io)?;
         }
     }
-    Ok(files.len())
+    Ok(MinifyResult {
+        files: files.len(),
+        output: messages,
+    })
 }

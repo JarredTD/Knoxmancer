@@ -37,7 +37,9 @@ pub(crate) fn run(cli: Cli, reporter: &Reporter) -> Result<()> {
                 "Running {}",
                 project.config.test.command.join(" ")
             ));
-            crate::test_runner::run(&validated)?;
+            for line in crate::test_runner::run(&validated)? {
+                reporter.status(&line);
+            }
             reporter.status("Tests passed");
             Ok(())
         }
@@ -112,6 +114,9 @@ fn build_validated(
 ) -> Result<BuildArtifact> {
     reporter.verbose("Staging artifact with atomic replacement");
     let artifact = artifact::build(validated, profile)?;
+    for line in &artifact.tool_output {
+        reporter.status(line);
+    }
     if profile == BuildProfile::Release && validated.project.config.release.minify.is_some() {
         reporter.status(&format!("Minified {} Lua files", artifact.minified_files));
     }

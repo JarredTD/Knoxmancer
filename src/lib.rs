@@ -13,6 +13,7 @@ mod layout;
 mod metadata;
 mod minify;
 mod output;
+mod process;
 mod scaffold;
 mod templates;
 mod test_runner;

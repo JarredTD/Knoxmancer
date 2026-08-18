@@ -185,6 +185,17 @@ fn executes_configured_test_commands_and_propagates_failures() {
     .unwrap();
     assert!(km(&["--project", path(&project), "test"]).status.success());
 
+    let quiet = km(&["--quiet", "--project", path(&project), "test"]);
+    assert!(quiet.status.success());
+    assert!(quiet.stdout.is_empty());
+    assert!(quiet.stderr.is_empty());
+
+    let json = km(&["--format", "json", "--project", path(&project), "test"]);
+    assert!(json.status.success());
+    for line in String::from_utf8(json.stdout).unwrap().lines() {
+        serde_json::from_str::<serde_json::Value>(line).unwrap();
+    }
+
     let source = fs::read_to_string(&manifest).unwrap();
     fs::write(
         &manifest,

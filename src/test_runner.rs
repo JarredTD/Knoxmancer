@@ -1,11 +1,10 @@
 //! Configured project test-command execution.
 
-use std::process::Command;
-
 use crate::error::{Error, Result};
+use crate::process;
 use crate::validation::ValidatedProject;
 
-pub(crate) fn run(validated: &ValidatedProject<'_>) -> Result<()> {
+pub(crate) fn run(validated: &ValidatedProject<'_>) -> Result<Vec<String>> {
     let project = validated.project;
     let (program, arguments) = project
         .config
@@ -13,18 +12,13 @@ pub(crate) fn run(validated: &ValidatedProject<'_>) -> Result<()> {
         .command
         .split_first()
         .ok_or_else(|| Error::project("no test.command is configured in knoxmancer.toml"))?;
-    let status = Command::new(program)
-        .args(arguments)
-        .current_dir(&project.root)
-        .status()
-        .map_err(|error| Error::tool(format!("could not run {program}: {error}")))?;
-    if !status.success() {
+    let output = process::run(program, arguments, Some(&project.root))?;
+    if !output.success() {
         return Err(Error::tool(format!(
-            "test command exited with {}",
-            status
-                .code()
-                .map_or_else(|| "a signal".to_owned(), |code| code.to_string())
+            "test command exited with {}{}",
+            output.status_description(),
+            output.failure_detail()
         )));
     }
-    Ok(())
+    Ok(output.lines())
 }
