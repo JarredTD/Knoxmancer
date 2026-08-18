@@ -9,6 +9,7 @@ use super::diagnostic::Diagnostic;
 use super::layout::ProjectLayout;
 use super::metadata::{ModMetadata, read as read_metadata};
 use super::preview;
+use super::workshop;
 use crate::error::{Error, Result};
 
 const PREVIEW_MAX_BYTES: u64 = 1_000_000;
@@ -153,6 +154,10 @@ fn validate_public(project: &Project, problems: &mut Vec<Diagnostic>) {
                 ));
             }
         }
+    }
+    let workshop_path = public.join("workshop.txt");
+    if workshop_path.is_file() {
+        problems.extend(workshop::validate(&workshop_path));
     }
 }
 

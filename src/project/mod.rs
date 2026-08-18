@@ -6,6 +6,7 @@ mod layout;
 mod metadata;
 pub(crate) mod preview;
 pub(crate) mod validation;
+mod workshop;
 
 pub(crate) use config::Project;
 pub(crate) use diagnostic::Diagnostic;
