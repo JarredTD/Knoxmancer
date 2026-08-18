@@ -114,13 +114,21 @@ fn paths(project: &Project, reporter: &Reporter) -> Result<()> {
     let mod_id = &validated.metadata.id;
     let local = crate::system::environment::zomboid_root(None, "mods")?.join(mod_id);
     let staging = crate::system::environment::zomboid_root(None, "Workshop")?.join(mod_id);
-    for (label, path) in [
-        ("Development artifact", output.join("dev").join(mod_id)),
-        ("Local installation", local),
-        ("Workshop artifact", output.join("workshop").join(mod_id)),
-        ("Workshop staging", staging),
+    for (name, label, path) in [
+        (
+            "development_artifact",
+            "Development artifact",
+            output.join("dev").join(mod_id),
+        ),
+        ("local_installation", "Local installation", local),
+        (
+            "workshop_artifact",
+            "Workshop artifact",
+            output.join("workshop").join(mod_id),
+        ),
+        ("workshop_staging", "Workshop staging", staging),
     ] {
-        reporter.status(&format!("{label}: {}", path.display()));
+        reporter.path(name, label, &path);
     }
     Ok(())
 }

@@ -25,6 +25,10 @@ pub struct Cli {
     #[arg(long, global = true, value_enum, default_value_t = ColorChoice::Auto)]
     pub color: ColorChoice,
 
+    /// Selects human-readable output or newline-delimited JSON events.
+    #[arg(long, global = true, value_enum, default_value_t = OutputFormat::Human)]
+    pub format: OutputFormat,
+
     #[command(subcommand)]
     /// Operation selected by the user.
     pub command: Command,
@@ -36,6 +40,7 @@ impl Cli {
         OutputOptions {
             quiet: self.quiet,
             color: self.color,
+            format: self.format,
         }
     }
 }
@@ -47,6 +52,17 @@ pub struct OutputOptions {
     pub quiet: bool,
     /// Controls ANSI color in human-readable errors.
     pub color: ColorChoice,
+    /// Selects the serialized output contract.
+    pub format: OutputFormat,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum, PartialEq, Eq)]
+/// Stable output serialization format.
+pub enum OutputFormat {
+    /// Writes requested data and status messages as plain text.
+    Human,
+    /// Writes one JSON object per event.
+    Json,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]

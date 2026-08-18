@@ -184,15 +184,65 @@ fn reports_resolved_project_paths() {
     assert!(km(&["new", path(&project)]).status.success());
     let output = km(&["--project", path(&project), "paths"]);
     assert!(output.status.success());
-    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(output.stderr.is_empty());
+    let stdout = String::from_utf8(output.stdout).unwrap();
     for label in [
         "Development artifact:",
         "Local installation:",
         "Workshop artifact:",
         "Workshop staging:",
     ] {
-        assert!(stderr.contains(label), "missing {label}");
+        assert!(stdout.contains(label), "missing {label}");
     }
+}
+
+#[test]
+fn emits_stable_json_lines_for_paths_status_and_errors() {
+    let temporary = tempdir().unwrap();
+    let project = temporary.path().join("json-mod");
+    assert!(km(&["new", path(&project)]).status.success());
+
+    let paths = km(&["--format", "json", "--project", path(&project), "paths"]);
+    assert!(paths.status.success());
+    assert!(paths.stderr.is_empty());
+    let events = String::from_utf8(paths.stdout)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(events.len(), 4);
+    assert!(events.iter().all(|event| event["type"] == "path"));
+    assert_eq!(events[0]["name"], "development_artifact");
+
+    let checked = km(&["--format", "json", "--project", path(&project), "check"]);
+    assert!(checked.status.success());
+    let event: serde_json::Value =
+        serde_json::from_slice(checked.stdout.strip_suffix(b"\n").unwrap()).unwrap();
+    assert_eq!(event["type"], "status");
+
+    fs::write(project.join("src/mod.info"), "name=Broken\n").unwrap();
+    let failed = km(&["--format", "json", "--project", path(&project), "check"]);
+    assert_eq!(failed.status.code(), Some(1));
+    assert!(failed.stdout.is_empty());
+    let event: serde_json::Value =
+        serde_json::from_slice(failed.stderr.strip_suffix(b"\n").unwrap()).unwrap();
+    assert_eq!(event["type"], "error");
+    assert_eq!(event["kind"], "validation");
+    assert_eq!(event["exit_code"], 1);
+}
+
+#[test]
+fn rejects_unknown_commands_with_a_usage_exit_code() {
+    let output = km(&["unknown-command"]);
+    assert_eq!(output.status.code(), Some(2));
+
+    let output = km(&["--format=json", "unknown-command"]);
+    assert_eq!(output.status.code(), Some(2));
+    let event: serde_json::Value =
+        serde_json::from_slice(output.stderr.strip_suffix(b"\n").unwrap()).unwrap();
+    assert_eq!(event["type"], "error");
+    assert_eq!(event["kind"], "usage");
+    assert_eq!(event["exit_code"], 2);
 }
 
 #[test]

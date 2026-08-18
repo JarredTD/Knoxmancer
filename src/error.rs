@@ -92,6 +92,18 @@ impl Error {
     }
 }
 
+impl ErrorKind {
+    /// Returns the stable machine-readable category name.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Usage => "usage",
+            Self::Project => "project",
+            Self::Validation => "validation",
+            Self::Io => "io",
+        }
+    }
+}
+
 impl fmt::Display for Error {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(&self.message)
@@ -99,3 +111,16 @@ impl fmt::Display for Error {
 }
 
 impl std::error::Error for Error {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn exposes_every_stable_error_kind() {
+        assert_eq!(ErrorKind::Usage.as_str(), "usage");
+        assert_eq!(ErrorKind::Project.as_str(), "project");
+        assert_eq!(ErrorKind::Validation.as_str(), "validation");
+        assert_eq!(ErrorKind::Io.as_str(), "io");
+    }
+}

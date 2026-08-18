@@ -24,12 +24,16 @@ where
     I: IntoIterator<Item = T>,
     T: Into<OsString> + Clone,
 {
+    let args = args.into_iter().map(Into::into).collect::<Vec<OsString>>();
+    let json = requests_json(&args);
     match run(args) {
         Ok(()) => 0,
         Err(error) => {
             if matches!(error.kind(), error::ErrorKind::Usage) {
                 if error.exit_code() == 0 {
                     print!("{error}");
+                } else if json {
+                    Reporter::json_error(&error);
                 } else {
                     eprint!("{error}");
                 }
@@ -37,6 +41,26 @@ where
             error.exit_code()
         }
     }
+}
+
+/// Detects the requested output format before Clap handles a usage failure.
+fn requests_json(args: &[OsString]) -> bool {
+    let mut json = false;
+    let mut arguments = args.iter().skip(1);
+    while let Some(argument) = arguments.next() {
+        if argument == "--format" {
+            json = arguments
+                .next()
+                .and_then(|value| value.to_str())
+                .is_some_and(|value| value == "json");
+        } else if let Some(value) = argument
+            .to_str()
+            .and_then(|value| value.strip_prefix("--format="))
+        {
+            json = value == "json";
+        }
+    }
+    json
 }
 
 /// Parses arguments, constructs an output reporter, and dispatches one command.
