@@ -131,6 +131,54 @@ pub(crate) fn copy_file(source: &Path, destination: &Path) -> Result<()> {
     })
 }
 
+/// Atomically writes a file and reports any obsolete-backup cleanup failure.
+pub(crate) fn atomic_write(destination: &Path, contents: &[u8]) -> Result<AtomicReplaceResult> {
+    let parent = destination
+        .parent()
+        .ok_or_else(|| Error::project("file destination has no parent"))?;
+    let name = destination
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| Error::project("file destination has no valid name"))?;
+    fs::create_dir_all(parent).map_err(Error::io)?;
+    let staging = staging_path(parent, name);
+    fs::write(&staging, contents).map_err(Error::io)?;
+    let backup = parent.join(format!(".{name}-backup-{}", unique_token()));
+
+    if destination.exists()
+        && let Err(error) = fs::rename(destination, &backup)
+    {
+        let _ = fs::remove_file(&staging);
+        return Err(destination_error(
+            error,
+            destination,
+            "could not move the existing file",
+        ));
+    }
+    if let Err(error) = fs::rename(&staging, destination) {
+        if backup.exists() && !destination.exists() {
+            let _ = fs::rename(&backup, destination);
+        }
+        let _ = fs::remove_file(&staging);
+        return Err(destination_error(
+            error,
+            destination,
+            "could not replace the file",
+        ));
+    }
+    let cleanup_warning = if backup.exists() {
+        fs::remove_file(&backup).err().map(|error| {
+            format!(
+                "replacement succeeded, but old backup {} could not be removed: {error}",
+                backup.display()
+            )
+        })
+    } else {
+        None
+    };
+    Ok(AtomicReplaceResult { cleanup_warning })
+}
+
 /// Copies a directory into a sibling staging path and atomically replaces its destination.
 pub(crate) fn replace_with_copy(source: &Path, destination: &Path) -> Result<AtomicReplaceResult> {
     let parent = destination
@@ -578,6 +626,25 @@ mod tests {
             .map(|_| staging_path(parent, "example"))
             .collect::<std::collections::BTreeSet<_>>();
         assert_eq!(paths.len(), 1_000);
+    }
+
+    #[test]
+    fn atomically_creates_and_replaces_files() {
+        let temporary = tempdir().unwrap();
+        let destination = temporary.path().join("config.toml");
+        assert!(
+            atomic_write(&destination, b"first")
+                .unwrap()
+                .cleanup_warning
+                .is_none()
+        );
+        assert!(
+            atomic_write(&destination, b"second")
+                .unwrap()
+                .cleanup_warning
+                .is_none()
+        );
+        assert_eq!(fs::read(destination).unwrap(), b"second");
     }
 
     #[test]
