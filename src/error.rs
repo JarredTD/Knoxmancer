@@ -14,6 +14,8 @@ pub struct Error {
     message: String,
     /// Process exit code returned to the caller.
     exit_code: u8,
+    /// Underlying failure, when the error adapts another error type.
+    source: Option<Box<dyn std::error::Error + Send + Sync>>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -35,10 +37,13 @@ pub type Result<T> = std::result::Result<T, Error>;
 impl Error {
     /// Converts a Clap response into a Knoxmancer error while preserving its exit code.
     pub fn usage(error: clap::Error) -> Self {
+        let message = error.to_string();
+        let exit_code = error.exit_code().try_into().unwrap_or(2);
         Self {
             kind: ErrorKind::Usage,
-            message: error.to_string(),
-            exit_code: error.exit_code().try_into().unwrap_or(2),
+            message,
+            exit_code,
+            source: Some(Box::new(error)),
         }
     }
 
@@ -64,7 +69,12 @@ impl Error {
 
     /// Converts an I/O error into a Knoxmancer error.
     pub fn io(error: io::Error) -> Self {
-        Self::new(ErrorKind::Io, error.to_string())
+        Self {
+            kind: ErrorKind::Io,
+            message: error.to_string(),
+            exit_code: 1,
+            source: Some(Box::new(error)),
+        }
     }
 
     /// Creates an error of the supplied kind with exit code one.
@@ -73,6 +83,7 @@ impl Error {
             kind,
             message: message.into(),
             exit_code: 1,
+            source: None,
         }
     }
 
@@ -110,7 +121,13 @@ impl fmt::Display for Error {
     }
 }
 
-impl std::error::Error for Error {}
+impl std::error::Error for Error {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        self.source
+            .as_deref()
+            .map(|source| source as &(dyn std::error::Error + 'static))
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -122,5 +139,15 @@ mod tests {
         assert_eq!(ErrorKind::Project.as_str(), "project");
         assert_eq!(ErrorKind::Validation.as_str(), "validation");
         assert_eq!(ErrorKind::Io.as_str(), "io");
+    }
+
+    #[test]
+    fn preserves_adapted_error_sources() {
+        let error = Error::io(io::Error::new(io::ErrorKind::NotFound, "missing"));
+        assert_eq!(
+            std::error::Error::source(&error).unwrap().to_string(),
+            "missing"
+        );
+        assert!(std::error::Error::source(&Error::project("invalid")).is_none());
     }
 }
