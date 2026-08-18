@@ -87,8 +87,17 @@ pub fn install(
     fs::create_dir_all(&root).map_err(Error::io)?;
     let staging = staging_path(&root, &artifact.mod_id);
     remove_tree_if_exists(&staging)?;
-    copy_tree(&artifact.path, &staging)?;
-    let replacement = atomic_replace(&staging, &destination)?;
+    if let Err(error) = copy_tree(&artifact.path, &staging) {
+        let _ = remove_tree_if_exists(&staging);
+        return Err(error);
+    }
+    let replacement = match atomic_replace(&staging, &destination) {
+        Ok(replacement) => replacement,
+        Err(error) => {
+            let _ = remove_tree_if_exists(&staging);
+            return Err(error);
+        }
+    };
     Ok(InstallResult {
         path: destination,
         warnings: replacement.cleanup_warning.into_iter().collect(),

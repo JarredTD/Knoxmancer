@@ -73,8 +73,16 @@ pub(crate) fn atomic_replace(staging: &Path, destination: &Path) -> Result<Atomi
             .unwrap_or("artifact"),
         unique_token()
     ));
-    if destination.exists() {
-        fs::rename(destination, &backup).map_err(Error::io)?;
+    if destination.exists()
+        && let Err(error) = fs::rename(destination, &backup)
+    {
+        return Err(Error::io(std::io::Error::new(
+            error.kind(),
+            format!(
+                "could not move existing directory {}: {error}",
+                destination.display()
+            ),
+        )));
     }
     if let Err(error) = fs::rename(staging, destination) {
         if backup.exists()
@@ -89,7 +97,13 @@ pub(crate) fn atomic_replace(staging: &Path, destination: &Path) -> Result<Atomi
                 ),
             )));
         }
-        return Err(Error::io(error));
+        return Err(Error::io(std::io::Error::new(
+            error.kind(),
+            format!(
+                "could not replace directory {}: {error}",
+                destination.display()
+            ),
+        )));
     }
     let cleanup_warning = remove_tree_if_exists(&backup).err().map(|error| {
         format!(
@@ -163,7 +177,12 @@ mod tests {
         let destination = temporary.path().join("artifact");
         fs::create_dir(&destination).unwrap();
         fs::write(destination.join("old.txt"), "old").unwrap();
-        assert!(atomic_replace(&missing, &destination).is_err());
+        let error = atomic_replace(&missing, &destination).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains(&destination.display().to_string())
+        );
         assert_eq!(
             fs::read_to_string(destination.join("old.txt")).unwrap(),
             "old"

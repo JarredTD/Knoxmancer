@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Stage upload projects in the user Zomboid Workshop directory used by the game.
+- Clarify the local-play install and Workshop-project workflows.
+
 ## 0.3.0
 
 - Detect Steam and stage Workshop packages for the Project Zomboid uploader.

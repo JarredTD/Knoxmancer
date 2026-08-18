@@ -138,9 +138,7 @@ fn full_and_short_binaries_expose_the_same_version() {
     let help = km(&["--help"]);
     let help = String::from_utf8(help.stdout).unwrap();
     assert!(help.contains("Creates a complete Project Zomboid mod project"));
-    assert!(
-        help.contains("Creates and optionally stages a verified Steam Workshop directory tree")
-    );
+    assert!(help.contains("Creates and optionally stages a verified Workshop upload project"));
     let package_help = km(&["package", "--help"]);
     let package_help = String::from_utf8(package_help.stdout).unwrap();
     assert!(package_help.contains("--stage"));
@@ -158,6 +156,7 @@ fn diagnoses_the_environment_without_a_project() {
     let stderr = String::from_utf8(output.stderr).unwrap();
     assert!(stderr.contains("Knoxmancer environment"));
     assert!(stderr.contains("Local mods:"));
+    assert!(stderr.contains("Workshop projects:"));
 }
 
 #[test]

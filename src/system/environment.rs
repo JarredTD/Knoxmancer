@@ -4,25 +4,32 @@ use std::env;
 use std::path::PathBuf;
 use std::process::Command;
 
-/// Reports Git availability and the inferred local mods directory.
+/// Reports Git availability and inferred Zomboid project directories.
 pub(crate) fn doctor() -> Vec<String> {
     let mut lines = vec!["Knoxmancer environment".to_owned()];
     lines.push(report_command("git", &["--version"]));
 
     if let Some(home) = home_directory() {
         let mods = home.join("Zomboid/mods");
+        let workshop = home.join("Zomboid/Workshop");
         lines.push(format!(
             "Local mods: {} ({})",
             mods.display(),
             if mods.is_dir() { "found" } else { "not found" }
         ));
+        lines.push(format!(
+            "Workshop projects: {} ({})",
+            workshop.display(),
+            if workshop.is_dir() {
+                "found"
+            } else {
+                "not found"
+            }
+        ));
     } else {
         lines.push("Local mods: home directory unavailable".to_owned());
+        lines.push("Workshop projects: home directory unavailable".to_owned());
     }
-    lines.push(match super::steam::project_zomboid_mods_root() {
-        Ok(path) => format!("Workshop staging: {} (found)", path.display()),
-        Err(error) => format!("Workshop staging: not found ({error})"),
-    });
     lines
 }
 

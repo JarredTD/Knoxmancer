@@ -24,9 +24,9 @@ km init                  Adopt the current project
 km doctor                Inspect the local environment
 km check                 Validate a project
 km build                 Build a readable artifact
-km install               Install a local development build
-km package               Create a Workshop-ready tree
-km package --stage       Stage it for the Zomboid Workshop uploader
+km install               Install the mod for local play
+km package               Create a Workshop upload project
+km package --stage       Stage it for Zomboid's Workshop uploader
 km clean                 Remove generated artifacts
 ```
 
@@ -68,9 +68,9 @@ receives generated artifacts. Release includes must be files inside the project.
 Game-facing metadata remains in `mod.info` and `workshop.txt`. Development and
 Workshop artifacts are written under `dist/dev` and `dist/workshop`.
 
-`km package --stage` detects the Steam library containing Project Zomboid and
-copies the Workshop artifact into the game's `mods` directory. Override the
-detected directory with `--root <path>` when needed.
+`km package --stage` copies the complete upload project into
+`~/Zomboid/Workshop`. Override that projects directory with `--root <path>`
+when needed.
 
 Use `--format json` for versioned newline-delimited JSON output.
 

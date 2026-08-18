@@ -10,6 +10,7 @@ use description::render;
 use crate::build::assemble_mod;
 use crate::error::{Error, Result};
 use crate::project::ValidatedProject;
+use crate::system::environment::home_directory;
 use crate::system::fs::{
     atomic_replace, copy_file, copy_tree, remove_tree_if_exists, staging_path,
 };
@@ -60,7 +61,7 @@ pub(crate) fn package(validated: &ValidatedProject<'_>) -> Result<PackageResult>
     })
 }
 
-/// Atomically stages a Workshop package for Project Zomboid's uploader.
+/// Atomically stages a Workshop project for Project Zomboid's uploader.
 pub(crate) fn stage(
     package: &PackageResult,
     configured_root: Option<&Path>,
@@ -68,20 +69,31 @@ pub(crate) fn stage(
     let root = match configured_root {
         Some(path) if path.is_absolute() => path.to_path_buf(),
         Some(path) => std::env::current_dir().map_err(Error::io)?.join(path),
-        None => crate::system::steam::project_zomboid_mods_root()?,
+        None => home_directory()
+            .ok_or_else(|| Error::project("home directory is unavailable; pass --root"))?
+            .join("Zomboid/Workshop"),
     };
     let destination = root.join(&package.mod_id);
     if destination.parent() != Some(root.as_path()) {
         return Err(Error::project(format!(
-            "unsafe Workshop staging destination: {}",
+            "unsafe Workshop project destination: {}",
             destination.display()
         )));
     }
     fs::create_dir_all(&root).map_err(Error::io)?;
     let staging = staging_path(&root, &package.mod_id);
     remove_tree_if_exists(&staging)?;
-    copy_tree(&package.path, &staging)?;
-    let replacement = atomic_replace(&staging, &destination)?;
+    if let Err(error) = copy_tree(&package.path, &staging) {
+        let _ = remove_tree_if_exists(&staging);
+        return Err(error);
+    }
+    let replacement = match atomic_replace(&staging, &destination) {
+        Ok(replacement) => replacement,
+        Err(error) => {
+            let _ = remove_tree_if_exists(&staging);
+            return Err(error);
+        }
+    };
     Ok(StageResult {
         path: destination,
         warnings: replacement.cleanup_warning.into_iter().collect(),

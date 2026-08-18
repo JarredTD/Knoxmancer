@@ -49,14 +49,14 @@ pub(crate) fn run(cli: Cli, reporter: &Reporter) -> Result<()> {
             let packaged = crate::workshop::package(&validated)?;
             report_warnings(&packaged.warnings, reporter);
             reporter.status(&format!(
-                "Packaged Workshop artifact: {}",
+                "Packaged Workshop project: {}",
                 packaged.path.display()
             ));
             if args.stage {
                 let staged = crate::workshop::stage(&packaged, args.root.as_deref())?;
                 report_warnings(&staged.warnings, reporter);
                 reporter.status(&format!(
-                    "Staged Workshop artifact: {}",
+                    "Staged Workshop project: {}",
                     staged.path.display()
                 ));
             }

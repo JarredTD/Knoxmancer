@@ -96,9 +96,9 @@ pub enum Command {
     Check(CheckArgs),
     /// Creates a local development artifact.
     Build(BuildArgs),
-    /// Builds and atomically installs the mod locally.
+    /// Builds and installs the mod for local play.
     Install(InstallArgs),
-    /// Creates and optionally stages a verified Steam Workshop directory tree.
+    /// Creates and optionally stages a verified Workshop upload project.
     Package(PackageArgs),
     /// Removes Knoxmancer-generated artifacts.
     Clean(CleanArgs),
@@ -148,7 +148,7 @@ pub struct CheckArgs {
 pub struct BuildArgs {}
 
 #[derive(Debug, Args, Default)]
-/// Arguments for local mod installation.
+/// Arguments for local-play mod installation.
 pub struct InstallArgs {
     #[arg(long, value_name = "PATH")]
     /// Overrides the default Project Zomboid mods root.
@@ -156,13 +156,13 @@ pub struct InstallArgs {
 }
 
 #[derive(Debug, Args, Default)]
-/// Arguments for Workshop package construction and uploader staging.
+/// Arguments for Workshop project construction and uploader staging.
 pub struct PackageArgs {
     #[arg(long)]
-    /// Stages the package in the installed Project Zomboid uploader directory.
+    /// Stages the project in the user's Zomboid Workshop directory.
     pub stage: bool,
     #[arg(long, value_name = "PATH", requires = "stage")]
-    /// Overrides the detected Project Zomboid uploader mods root.
+    /// Overrides the default Zomboid Workshop projects directory.
     pub root: Option<PathBuf>,
 }
 
