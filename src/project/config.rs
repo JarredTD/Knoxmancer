@@ -99,6 +99,11 @@ impl Project {
             Some(path) => path.to_path_buf(),
             None => std::env::current_dir().map_err(Error::io)?,
         };
+        let start = if start.is_absolute() {
+            start
+        } else {
+            std::env::current_dir().map_err(Error::io)?.join(start)
+        };
         let start = if start.is_file() {
             start.parent().unwrap_or(&start).to_path_buf()
         } else {
