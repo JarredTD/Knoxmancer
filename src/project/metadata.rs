@@ -20,12 +20,18 @@ pub struct ModMetadata {
 pub fn read(path: &Path, build: &str) -> Result<ModMetadata> {
     let source = fs::read_to_string(path)
         .map_err(|error| Error::validation(format!("{}: {error}", path.display())))?;
-    let fields = parse_fields(&source);
+    let fields = parse_fields(&source, path)?;
     let required = |key: &str| {
-        fields
+        let value = fields
             .get(key)
-            .cloned()
-            .ok_or_else(|| Error::validation(format!("{}: missing `{key}`", path.display())))
+            .ok_or_else(|| Error::validation(format!("{}: missing `{key}`", path.display())))?;
+        if value.trim().is_empty() {
+            return Err(Error::validation(format!(
+                "{}: `{key}` must not be empty",
+                path.display()
+            )));
+        }
+        Ok(value.clone())
     };
     let version = required("modversion")?;
     let semantic_version = Regex::new(r"^\d+\.\d+\.\d+$").expect("valid regex");
@@ -53,12 +59,21 @@ pub fn read(path: &Path, build: &str) -> Result<ModMetadata> {
     })
 }
 
-fn parse_fields(source: &str) -> BTreeMap<String, String> {
-    source
-        .lines()
-        .filter_map(|line| line.split_once('='))
-        .map(|(key, value)| (key.trim().to_owned(), value.trim().to_owned()))
-        .collect()
+fn parse_fields(source: &str, path: &Path) -> Result<BTreeMap<String, String>> {
+    let mut fields = BTreeMap::new();
+    for (key, value) in source.lines().filter_map(|line| line.split_once('=')) {
+        let key = key.trim().to_owned();
+        if fields
+            .insert(key.clone(), value.trim().to_owned())
+            .is_some()
+        {
+            return Err(Error::validation(format!(
+                "{}: duplicate `{key}` field",
+                path.display()
+            )));
+        }
+    }
+    Ok(fields)
 }
 
 #[cfg(test)]
@@ -86,6 +101,14 @@ mod tests {
         fs::write(&path, "name=Example\nid=Example\nmodversion=1.2\n").unwrap();
         assert!(read(&path, "42").is_err());
         fs::write(&path, "name=Example\nid=Example\n").unwrap();
+        assert!(read(&path, "42").is_err());
+        fs::write(&path, "name=Example\nid=\nmodversion=1.0.0\n").unwrap();
+        assert!(read(&path, "42").is_err());
+        fs::write(
+            &path,
+            "name=Example\nid=Example\nid=Other\nmodversion=1.0.0\n",
+        )
+        .unwrap();
         assert!(read(&path, "42").is_err());
     }
 }

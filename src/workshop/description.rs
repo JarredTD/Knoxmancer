@@ -29,6 +29,12 @@ pub(crate) fn render(project: &Project, metadata: &ModMetadata) -> Result<String
         )));
     };
     let description = markdown_to_bbcode(&rendered_markdown);
+    if description.trim().is_empty() {
+        return Err(Error::validation(format!(
+            "{}: Workshop description must not be empty",
+            description_path.display()
+        )));
+    }
     if description.len() >= DESCRIPTION_MAX_BYTES {
         return Err(Error::validation(format!(
             "Workshop description must be under {DESCRIPTION_MAX_BYTES} bytes; found {}",
@@ -183,6 +189,8 @@ mod tests {
                 .unwrap()
                 .contains("description=plain")
         );
+        fs::write(public.join("description.md"), "\n").unwrap();
+        assert!(render(&value, &metadata).is_err());
         fs::write(public.join("description.md"), "{{CHANGELOG}}\ntrailing").unwrap();
         assert!(render(&value, &metadata).is_err());
         fs::write(

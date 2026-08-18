@@ -10,7 +10,7 @@ use crate::error::{Error, Result};
 pub const MANIFEST_NAME: &str = "knoxmancer.toml";
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct Config {
     pub project: ProjectConfig,
     pub paths: PathsConfig,
@@ -18,7 +18,7 @@ pub struct Config {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct ProjectConfig {
     pub builds: Vec<String>,
 }
@@ -32,7 +32,7 @@ impl Default for ProjectConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct PathsConfig {
     pub source: PathBuf,
     pub public: PathBuf,
@@ -50,7 +50,7 @@ impl Default for PathsConfig {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct ReleaseConfig {
     pub include: Vec<PathBuf>,
 }
@@ -123,6 +123,9 @@ mod tests {
         assert_eq!(project.root, root);
 
         fs::write(root.join(MANIFEST_NAME), "not valid toml = [").unwrap();
+        assert!(Project::load(root).is_err());
+
+        fs::write(root.join(MANIFEST_NAME), "[test]\ncommand = 'cargo test'\n").unwrap();
         assert!(Project::load(root).is_err());
     }
 }

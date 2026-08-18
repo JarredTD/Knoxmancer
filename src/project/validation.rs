@@ -1,5 +1,6 @@
+use std::collections::BTreeMap;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use regex::Regex;
 use walkdir::WalkDir;
@@ -36,6 +37,14 @@ pub fn check(project: &Project, release: bool) -> Result<ValidatedProject<'_>> {
         ));
     }
     for build in &project.config.project.builds {
+        if build != "42" {
+            problems.push(Diagnostic::at(
+                "project.build.unsupported",
+                project.root.join("knoxmancer.toml"),
+                format!("unsupported Project Zomboid build: {build}"),
+            ));
+            continue;
+        }
         let path = source_root.join(build).join("mod.info");
         match read_metadata(&path, build) {
             Ok(value) => metadata.push(value),
@@ -197,6 +206,16 @@ fn validate_translations(source_root: &Path, problems: &mut Vec<Diagnostic>) {
 }
 
 fn validate_release(project: &Project, problems: &mut Vec<Diagnostic>) {
+    let mut destinations = BTreeMap::from([
+        (
+            "root/preview.png".to_owned(),
+            PathBuf::from("public/preview.png"),
+        ),
+        (
+            "root/workshop.txt".to_owned(),
+            PathBuf::from("public/workshop.txt"),
+        ),
+    ]);
     for included in &project.config.release.include {
         let path = ProjectLayout::new(project)
             .and_then(|layout| layout.included(included))
@@ -205,8 +224,28 @@ fn validate_release(project: &Project, problems: &mut Vec<Diagnostic>) {
         if !path.is_file() {
             problems.push(Diagnostic::at(
                 "release.include.missing",
-                path,
+                &path,
                 "release file is missing",
+            ));
+        }
+        let Some(file_name) = included.file_name() else {
+            continue;
+        };
+        let file_name = file_name.to_string_lossy();
+        let destination = if file_name == "LICENSE" {
+            "mod/license".to_owned()
+        } else {
+            format!("root/{}", file_name.to_ascii_lowercase())
+        };
+        if let Some(previous) = destinations.insert(destination, included.clone()) {
+            problems.push(Diagnostic::at(
+                "release.include.collision",
+                path,
+                format!(
+                    "release include {} conflicts with {} in the Workshop package",
+                    included.display(),
+                    previous.display()
+                ),
             ));
         }
     }
@@ -247,19 +286,16 @@ mod tests {
     }
 
     #[test]
-    fn accumulates_cross_build_validation_problems() {
+    fn rejects_empty_and_unsupported_build_sets() {
         let temporary = tempdir().unwrap();
         let mut value = valid_project(temporary.path());
-        fs::create_dir_all(temporary.path().join("src/41")).unwrap();
-        fs::write(
-            temporary.path().join("src/41/mod.info"),
-            "name=Other\nid=Other\nmodversion=2.0.0\n",
-        )
-        .unwrap();
         value.config.project.builds.push("41".to_owned());
         let error = check(&value, false).unwrap_err().to_string();
-        assert!(error.contains("uses ID Other"));
-        assert!(error.contains("uses version 2.0.0"));
+        assert!(error.contains("unsupported Project Zomboid build: 41"));
+
+        value.config.project.builds = vec!["../outside".to_owned()];
+        let error = check(&value, false).unwrap_err().to_string();
+        assert!(error.contains("unsupported Project Zomboid build: ../outside"));
 
         value.config.project.builds.clear();
         assert!(check(&value, false).is_err());
@@ -315,6 +351,19 @@ mod tests {
             problems
                 .iter()
                 .any(|problem| problem.to_string().contains("release file is missing"))
+        );
+
+        fs::write(temporary.path().join("preview.png"), "collision").unwrap();
+        value
+            .config
+            .release
+            .include
+            .push(PathBuf::from("preview.png"));
+        validate_release(&value, &mut problems);
+        assert!(
+            problems
+                .iter()
+                .any(|problem| problem.code == "release.include.collision")
         );
     }
 

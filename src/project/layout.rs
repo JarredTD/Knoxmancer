@@ -1,5 +1,6 @@
 //! Validated paths derived from a project manifest.
 
+use std::fs;
 use std::path::{Component, Path, PathBuf};
 
 use super::config::Project;
@@ -38,43 +39,59 @@ impl<'a> ProjectLayout<'a> {
             )));
         }
         for included in &project.config.release.include {
-            Self::relative(included, "release.include", false)?;
+            layout.included(included)?;
         }
         Ok(layout)
     }
 
     /// Returns the confined source root.
     pub fn source_root(self) -> Result<PathBuf> {
-        Ok(self.project.root.join(Self::relative(
-            &self.project.config.paths.source,
+        self.confined(
+            Self::relative(&self.project.config.paths.source, "paths.source", true)?,
             "paths.source",
-            true,
-        )?))
+        )
     }
 
     /// Returns the confined public-assets root.
     pub fn public_root(self) -> Result<PathBuf> {
-        Ok(self.project.root.join(Self::relative(
-            &self.project.config.paths.public,
+        self.confined(
+            Self::relative(&self.project.config.paths.public, "paths.public", false)?,
             "paths.public",
-            false,
-        )?))
+        )
     }
 
     /// Returns the confined generated-output root.
     pub fn output_root(self) -> Result<PathBuf> {
-        Ok(self.project.root.join(Self::relative(
-            &self.project.config.paths.output,
+        self.confined(
+            Self::relative(&self.project.config.paths.output, "paths.output", false)?,
             "paths.output",
-            false,
-        )?))
+        )
     }
 
     /// Resolves a release include and returns its normalized relative path and source path.
     pub fn included(self, configured: &Path) -> Result<(PathBuf, PathBuf)> {
         let relative = Self::relative(configured, "release.include", false)?;
-        let source = self.project.root.join(&relative);
+        let source = self.confined(relative.clone(), "release.include")?;
         Ok((relative, source))
+    }
+
+    fn confined(self, relative: PathBuf, name: &str) -> Result<PathBuf> {
+        let path = self.project.root.join(&relative);
+        let canonical_root = fs::canonicalize(&self.project.root).map_err(Error::io)?;
+        let mut existing = path.as_path();
+        while !existing.exists() {
+            existing = existing.parent().ok_or_else(|| {
+                Error::project(format!("{name} cannot be resolved within the project"))
+            })?;
+        }
+        let canonical_existing = fs::canonicalize(existing).map_err(Error::io)?;
+        if !canonical_existing.starts_with(&canonical_root) {
+            return Err(Error::project(format!(
+                "{name} resolves outside the project: {}",
+                path.display()
+            )));
+        }
+        Ok(path)
     }
 
     fn relative(path: &Path, name: &str, allow_project_root: bool) -> Result<PathBuf> {
@@ -144,6 +161,19 @@ mod tests {
         assert!(ProjectLayout::new(&value).is_err());
         value.config.paths.output = PathBuf::from("dist");
         value.config.release.include = vec![PathBuf::from("../LICENSE")];
+        assert!(ProjectLayout::new(&value).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_configured_links_outside_the_project() {
+        use std::os::unix::fs::symlink;
+
+        let temporary = tempdir().unwrap();
+        let outside = tempdir().unwrap();
+        symlink(outside.path(), temporary.path().join("linked-source")).unwrap();
+        let mut value = project(temporary.path());
+        value.config.paths.source = PathBuf::from("linked-source");
         assert!(ProjectLayout::new(&value).is_err());
     }
 }
