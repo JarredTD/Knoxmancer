@@ -1,0 +1,9 @@
+Contents/mods/Build42Fixture/42/media/lua/client/Build42Fixture/ClientMain.lua
+Contents/mods/Build42Fixture/42/media/lua/server/Build42Fixture/ServerMain.lua
+Contents/mods/Build42Fixture/42/media/lua/shared/Build42Fixture/Shared.lua
+Contents/mods/Build42Fixture/42/media/maps/FixtureMap/map.info
+Contents/mods/Build42Fixture/42/media/scripts/build42_fixture.txt
+Contents/mods/Build42Fixture/42/mod.info
+Contents/mods/Build42Fixture/LICENSE
+preview.png
+workshop.txt

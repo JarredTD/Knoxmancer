@@ -1,0 +1,9 @@
+module Build42Fixture
+{
+    item FixtureItem
+    {
+        DisplayCategory = Tool,
+        Type = Normal,
+        Weight = 0.1,
+    }
+}

@@ -1,0 +1,6 @@
+name=Build 42 Compatibility Fixture
+id=Build42Fixture
+description=Exercises the source layouts used by a Build 42 mod.
+author=Knoxmancer Tests
+modversion=1.4.2
+versionMin=42.0.0

@@ -38,6 +38,19 @@ fn files_below(root: &Path) -> BTreeSet<String> {
     files
 }
 
+fn copy_fixture(source: &Path, destination: &Path) {
+    fs::create_dir_all(destination).unwrap();
+    for entry in fs::read_dir(source).unwrap() {
+        let entry = entry.unwrap();
+        let target = destination.join(entry.file_name());
+        if entry.file_type().unwrap().is_dir() {
+            copy_fixture(&entry.path(), &target);
+        } else {
+            fs::copy(entry.path(), target).unwrap();
+        }
+    }
+}
+
 #[test]
 fn scaffolds_checks_builds_packages_installs_and_cleans() {
     let temporary = tempdir().unwrap();
@@ -194,6 +207,43 @@ fn reports_resolved_project_paths() {
     ] {
         assert!(stdout.contains(label), "missing {label}");
     }
+}
+
+#[test]
+fn packages_the_build_42_compatibility_fixture_exactly() {
+    let temporary = tempdir().unwrap();
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/build42");
+    let project = temporary.path().join("fixture");
+    let preview_source = temporary.path().join("preview-source");
+    copy_fixture(&fixture, &project);
+    assert!(km(&["new", path(&preview_source)]).status.success());
+    fs::copy(
+        preview_source.join("public/preview.png"),
+        project.join("public/preview.png"),
+    )
+    .unwrap();
+
+    assert!(km(&["--project", path(&project), "check"]).status.success());
+    assert!(
+        km(&["--project", path(&project), "package"])
+            .status
+            .success()
+    );
+
+    let expected = fs::read_to_string(fixture.join("expected-workshop-files.txt"))
+        .unwrap()
+        .lines()
+        .map(str::to_owned)
+        .collect();
+    let artifact = project.join("dist/workshop/Build42Fixture");
+    assert_eq!(files_below(&artifact), expected);
+    assert_eq!(
+        fs::read_to_string(artifact.join("Contents/mods/Build42Fixture/42/mod.info")).unwrap(),
+        fs::read_to_string(fixture.join("src/mod.info")).unwrap()
+    );
+    let workshop = fs::read_to_string(artifact.join("workshop.txt")).unwrap();
+    assert!(workshop.contains("[h1]Build 42 Compatibility Fixture[/h1]"));
+    assert!(workshop.contains("[url=https://projectzomboid.com]Project Zomboid[/url]"));
 }
 
 #[test]

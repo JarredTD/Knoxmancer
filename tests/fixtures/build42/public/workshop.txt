@@ -1,0 +1,6 @@
+version=1
+id=0
+title=Build 42 Compatibility Fixture
+{{DESCRIPTION}}
+tags=Build 42;Multiplayer;Utilities
+visibility=private

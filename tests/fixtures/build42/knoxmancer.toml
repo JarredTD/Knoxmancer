@@ -1,0 +1,12 @@
+manifest_version = 1
+
+[project]
+build = "42"
+
+[paths]
+source = "src"
+public = "public"
+output = "dist"
+
+[package]
+include = ["LICENSE"]
