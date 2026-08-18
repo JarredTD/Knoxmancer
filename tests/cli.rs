@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
 use std::process::{Command, Output};
@@ -13,6 +14,28 @@ fn km(arguments: &[&str]) -> Output {
 
 fn path(path: &Path) -> &str {
     path.to_str().expect("temporary path should be UTF-8")
+}
+
+fn files_below(root: &Path) -> BTreeSet<String> {
+    fn visit(root: &Path, directory: &Path, files: &mut BTreeSet<String>) {
+        for entry in fs::read_dir(directory).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                visit(root, &path, files);
+            } else {
+                files.insert(
+                    path.strip_prefix(root)
+                        .unwrap()
+                        .to_string_lossy()
+                        .replace('\\', "/"),
+                );
+            }
+        }
+    }
+
+    let mut files = BTreeSet::new();
+    visit(root, root, &mut files);
+    files
 }
 
 #[test]
@@ -52,19 +75,32 @@ fn scaffolds_checks_builds_packages_installs_and_cleans() {
         .success()
     );
 
-    assert!(project.join("dist/dev/ExampleMod/42/mod.info").is_file());
-    assert!(!project.join("dist/dev/ExampleMod/preview.png").exists());
-    assert!(!project.join("dist/release").exists());
-    assert!(
-        project
-            .join("dist/workshop/ExampleMod/Contents/mods/ExampleMod/42/mod.info")
-            .is_file()
+    let playable_files = BTreeSet::from([
+        "42/media/lua/client/.gitkeep".to_owned(),
+        "42/media/lua/server/.gitkeep".to_owned(),
+        "42/media/lua/shared/.gitkeep".to_owned(),
+        "42/media/scripts/.gitkeep".to_owned(),
+        "42/media/textures/.gitkeep".to_owned(),
+        "42/mod.info".to_owned(),
+    ]);
+    assert_eq!(
+        files_below(&project.join("dist/dev/ExampleMod")),
+        playable_files
     );
-    assert!(mods.join("ExampleMod/42/mod.info").is_file());
-    assert!(
-        workshop_projects
-            .join("ExampleMod/Contents/mods/ExampleMod/42/mod.info")
-            .is_file()
+    assert!(!project.join("dist/release").exists());
+    let mut workshop_files = playable_files
+        .iter()
+        .map(|file| format!("Contents/mods/ExampleMod/{file}"))
+        .collect::<BTreeSet<_>>();
+    workshop_files.extend(["preview.png".to_owned(), "workshop.txt".to_owned()]);
+    assert_eq!(
+        files_below(&project.join("dist/workshop/ExampleMod")),
+        workshop_files
+    );
+    assert_eq!(files_below(&mods.join("ExampleMod")), playable_files);
+    assert_eq!(
+        files_below(&workshop_projects.join("ExampleMod")),
+        workshop_files
     );
 
     assert!(km(&["--project", path(&project), "clean"]).status.success());

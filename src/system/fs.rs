@@ -220,6 +220,13 @@ mod tests {
             fs::read_to_string(destination.join("old.txt")).unwrap(),
             "old"
         );
+
+        let denied = destination_error(
+            std::io::Error::from(std::io::ErrorKind::PermissionDenied),
+            &destination,
+            "could not replace the directory",
+        );
+        assert!(denied.to_string().contains("close it and try again"));
     }
 
     #[test]

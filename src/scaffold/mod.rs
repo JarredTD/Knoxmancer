@@ -220,6 +220,7 @@ mod tests {
         assert!(root.join("src/shared/.gitkeep").is_file());
         assert!(root.join("src/server/.gitkeep").is_file());
         assert!(root.join("public/preview.png").metadata().unwrap().len() > 24);
+        assert!(!root.join("LICENSE").exists());
         assert_eq!(
             &fs::read(root.join("public/preview.png")).unwrap()[..8],
             b"\x89PNG\r\n\x1a\n"
