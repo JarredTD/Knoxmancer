@@ -179,4 +179,18 @@ mod tests {
         value.config.paths.source = PathBuf::from("linked-source");
         assert!(ProjectLayout::new(&value).is_err());
     }
+
+    #[cfg(windows)]
+    #[test]
+    fn rejects_configured_junctions_outside_the_project() {
+        use crate::system::fs::create_test_junction;
+
+        let temporary = tempdir().unwrap();
+        let outside = tempdir().unwrap();
+        let junction = temporary.path().join("linked-source");
+        create_test_junction(&junction, outside.path()).unwrap();
+        let mut value = project(temporary.path());
+        value.config.paths.source = PathBuf::from("linked-source");
+        assert!(ProjectLayout::new(&value).is_err());
+    }
 }
