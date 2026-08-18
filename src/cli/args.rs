@@ -67,11 +67,11 @@ pub enum Command {
     New(NewArgs),
     /// Adopts an existing mod project without rewriting game metadata.
     Init(InitArgs),
-    /// Reports Git availability and the local mods path.
+    /// Reports environment details and default Zomboid directories.
     Doctor(DoctorArgs),
-    /// Validates project structure, metadata, and assets.
+    /// Validates the project for local builds.
     Check(CheckArgs),
-    /// Creates a local development artifact.
+    /// Creates a playable artifact under the output directory.
     Build(BuildArgs),
     /// Builds and installs the mod for local play.
     Install(InstallArgs),

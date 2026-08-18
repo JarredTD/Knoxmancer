@@ -18,22 +18,26 @@ This installs `knoxmancer` and its `km` alias.
 
 ## Commands
 
-```text
-km new <directory>       Create a Build 42 project
-km init                  Adopt the current project
-km doctor                Inspect the local environment
-km check                 Validate a project
-km build                 Build a readable artifact
-km install               Install the mod for local play
-km package               Create a Workshop upload project
-km package --stage       Stage it for Zomboid's Workshop uploader
-km clean                 Remove generated artifacts
-```
+| Command | Result |
+| --- | --- |
+| `km new <directory>` | Create a Build 42 project |
+| `km init` | Adopt the current source-oriented project |
+| `km doctor` | Show the default local and Workshop directories |
+| `km check` | Validate the playable mod |
+| `km build` | Build under `dist/dev` |
+| `km install` | Build and install under `~/Zomboid/mods` for local play |
+| `km package` | Build a Workshop project under `dist/workshop` |
+| `km stage` | Package and copy under `~/Zomboid/Workshop` for uploading |
+| `km clean` | Remove generated artifacts |
+
+Use `km install` while developing and testing in the game. Use `km stage` when
+the mod is ready for **Workshop > Create and update items**. `km package` only
+creates the upload project; it does not copy it into Zomboid's Workshop folder.
 
 ## Manifest
 
 `knoxmancer.toml` defines the supported game builds, project directories, and
-files included with Workshop packages:
+optional files included with Workshop packages:
 
 ```toml
 [project]
@@ -45,7 +49,7 @@ public = "public"
 output = "dist"
 
 [release]
-include = ["CHANGELOG.md", "LICENSE"]
+include = []
 ```
 
 All configured paths are relative to the project root. The source tree uses a
@@ -53,26 +57,24 @@ development-oriented layout:
 
 ```text
 src/
-├── mod.info
-├── client/
-├── shared/
-├── server/
-└── media/
+|-- mod.info
+|-- client/
+|-- shared/
+|-- server/
+`-- media/
 ```
 
 Knoxmancer maps `client`, `shared`, and `server` into the corresponding
 `42/media/lua` directories. Files under `media` are copied into `42/media`.
 `public` contains `description.md`, `preview.png`, and `workshop.txt`; `output`
-receives generated artifacts. Release includes must be files inside the project.
+receives generated artifacts.
 
-Game-facing metadata remains in `mod.info` and `workshop.txt`. Development and
-Workshop artifacts are written under `dist/dev` and `dist/workshop`.
+Game-facing metadata remains in `mod.info` and `workshop.txt`. `km package` and
+`km stage` validate Workshop metadata, assets, and configured release includes.
+Local checks, builds, and installs do not require Workshop files.
 
-`km package --stage` copies the complete upload project into
-`~/Zomboid/Workshop`. Override that projects directory with `--root <path>`
-when needed.
-
-Use `--format json` for versioned newline-delimited JSON output.
+`km stage --root <path>` overrides the Workshop projects directory.
+`km install --root <path>` similarly overrides the local mods directory.
 
 ## License
 
