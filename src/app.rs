@@ -1,5 +1,7 @@
 //! Application workflows connecting CLI input, core operations, and output.
 
+use std::path::PathBuf;
+
 use crate::build::{self, DevelopmentArtifact};
 use crate::cli::Reporter;
 use clap::CommandFactory;
@@ -204,30 +206,55 @@ fn new_project(args: NewArgs, config: &UserConfig, reporter: &Reporter) -> Resul
 /// Reports every generated and game-facing directory for a project.
 fn paths(project: &Project, config: &UserConfig, reporter: &Reporter) -> Result<()> {
     let validated = validation::check(project, ValidationTarget::Playable)?;
-    let output = validated.layout.output_root()?;
-    let mod_id = &validated.metadata.id;
-    let local =
-        crate::system::environment::zomboid_root(config.mods_root.as_deref(), "mods")?.join(mod_id);
-    let staging =
-        crate::system::environment::zomboid_root(config.workshop_root.as_deref(), "Workshop")?
-            .join(mod_id);
+    let resolved = resolved_paths(&validated, config)?;
     for (name, label, path) in [
         (
             "development_artifact",
             "Development artifact",
-            output.join("dev").join(mod_id),
+            resolved.development,
         ),
-        ("local_installation", "Local installation", local),
+        ("local_installation", "Local installation", resolved.local),
         (
             "workshop_artifact",
             "Workshop artifact",
-            output.join("workshop").join(mod_id),
+            resolved.workshop_artifact,
         ),
-        ("workshop_staging", "Workshop staging", staging),
+        (
+            "workshop_staging",
+            "Workshop staging",
+            resolved.workshop_staging,
+        ),
     ] {
         reporter.path(name, label, &path);
     }
     Ok(())
+}
+
+/// Fully resolved artifact and game-facing paths for one validated project.
+struct ResolvedPaths {
+    /// Generated local development artifact.
+    development: PathBuf,
+    /// Installed local mod directory.
+    local: PathBuf,
+    /// Generated Workshop upload package.
+    workshop_artifact: PathBuf,
+    /// Project Zomboid Workshop staging directory.
+    workshop_staging: PathBuf,
+}
+
+/// Resolves paths using explicit user defaults before platform conventions.
+fn resolved_paths(validated: &ValidatedProject<'_>, config: &UserConfig) -> Result<ResolvedPaths> {
+    let output = validated.layout.output_root()?;
+    let mod_id = &validated.metadata.id;
+    let mods = crate::system::environment::zomboid_root(config.mods_root.as_deref(), "mods")?;
+    let workshop =
+        crate::system::environment::zomboid_root(config.workshop_root.as_deref(), "Workshop")?;
+    Ok(ResolvedPaths {
+        development: output.join("dev").join(mod_id),
+        local: mods.join(mod_id),
+        workshop_artifact: output.join("workshop").join(mod_id),
+        workshop_staging: workshop.join(mod_id),
+    })
 }
 
 /// Validates and builds a local development artifact.
