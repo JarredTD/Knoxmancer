@@ -100,10 +100,13 @@ pub(crate) fn copy_tree(source: &Path, destination: &Path) -> Result<()> {
         if entry.file_type().is_file() && is_artifact_junk(entry.path()) {
             continue;
         }
-        let relative = entry
-            .path()
-            .strip_prefix(source)
-            .expect("walked entry is below source");
+        let relative = entry.path().strip_prefix(source).map_err(|error| {
+            Error::project(format!(
+                "walked path {} escaped source {}: {error}",
+                entry.path().display(),
+                source.display()
+            ))
+        })?;
         let target = destination.join(relative);
         if is_link(entry.path())? {
             return Err(Error::project(format!(

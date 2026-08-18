@@ -43,10 +43,10 @@ pub fn build(validated: &ValidatedProject<'_>) -> Result<DevelopmentArtifact> {
     let metadata = &validated.metadata;
     let output = validated.layout.output_root()?;
     let destination = output.join("dev").join(&metadata.id);
-    let staging = staging_path(
-        destination.parent().expect("development output directory"),
-        &metadata.id,
-    );
+    let parent = destination
+        .parent()
+        .ok_or_else(|| Error::project("development output has no parent directory"))?;
+    let staging = staging_path(parent, &metadata.id);
 
     remove_tree_if_exists(&staging)?;
     fs::create_dir_all(&staging).map_err(Error::io)?;

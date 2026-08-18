@@ -102,11 +102,13 @@ pub(super) fn parse(path: &Path) -> Result<WorkshopMetadata, Vec<Diagnostic>> {
     }
 
     let version = one(&entries, "version", path, &mut diagnostics);
-    if version.is_some_and(|value| value != "1") {
+    if let Some(version) = version
+        && version != "1"
+    {
         diagnostics.push(Diagnostic::at(
             "workshop.value.invalid",
             path,
-            format!("version must be 1, found {}", version.unwrap()),
+            format!("version must be 1, found {version}"),
         ));
     }
     let id = one(&entries, "id", path, &mut diagnostics).and_then(|value| {

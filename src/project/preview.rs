@@ -5,22 +5,32 @@ use std::io::Cursor;
 use image::codecs::png::PngEncoder;
 use image::{ExtendedColorType, GenericImageView, ImageEncoder, ImageFormat, ImageReader, Limits};
 
+use crate::error::{Error, Result};
+
 /// Maximum memory made available to the image decoder.
 const DECODED_DATA_MAX_BYTES: u64 = 2_000_000;
 
 /// Generates an opaque RGBA PNG filled with Knoxmancer's scaffold color.
-pub(crate) fn generate(width: u32, height: u32) -> Vec<u8> {
-    let pixel_count = usize::try_from(u64::from(width) * u64::from(height))
-        .expect("preview dimensions fit in memory");
-    let mut pixels = Vec::with_capacity(pixel_count * 4);
+pub(crate) fn generate(width: u32, height: u32) -> Result<Vec<u8>> {
+    let pixel_count = u64::from(width)
+        .checked_mul(u64::from(height))
+        .and_then(|count| usize::try_from(count).ok())
+        .ok_or_else(|| Error::project("preview dimensions exceed addressable memory"))?;
+    let byte_count = pixel_count
+        .checked_mul(4)
+        .ok_or_else(|| Error::project("preview pixel data exceeds addressable memory"))?;
+    let mut pixels = Vec::new();
+    pixels
+        .try_reserve_exact(byte_count)
+        .map_err(|error| Error::project(format!("could not allocate preview pixels: {error}")))?;
     for _ in 0..pixel_count {
         pixels.extend_from_slice(&[44, 48, 46, 255]);
     }
     let mut png = Vec::new();
     PngEncoder::new(&mut png)
         .write_image(&pixels, width, height, ExtendedColorType::Rgba8)
-        .expect("encoding an in-memory RGBA preview succeeds");
-    png
+        .map_err(|error| Error::project(format!("could not encode preview PNG: {error}")))?;
+    Ok(png)
 }
 
 /// Fully decodes a bounded PNG and returns its dimensions.
@@ -55,7 +65,7 @@ mod tests {
 
     #[test]
     fn generates_and_fully_decodes_pngs() {
-        let image = generate(256, 256);
+        let image = generate(256, 256).unwrap();
         assert_eq!(inspect(&image).unwrap(), (256, 256));
 
         let mut corrupt = image.clone();
@@ -68,6 +78,6 @@ mod tests {
 
     #[test]
     fn bounds_decoded_png_data() {
-        assert!(inspect(&generate(1024, 1024)).is_err());
+        assert!(inspect(&generate(1024, 1024).unwrap()).is_err());
     }
 }

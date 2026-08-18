@@ -61,8 +61,8 @@ pub fn check(project: &Project, target: ValidationTarget) -> Result<ValidatedPro
 
     validate_source_layout(&source_root, &mut problems);
     let workshop = if target == ValidationTarget::Workshop {
-        let workshop = validate_public(project, &mut problems);
-        validate_package(project, &mut problems);
+        let workshop = validate_public(project, layout, &mut problems)?;
+        validate_package(project, layout, &mut problems)?;
         workshop
     } else {
         None
@@ -74,7 +74,7 @@ pub fn check(project: &Project, target: ValidationTarget) -> Result<ValidatedPro
     let result = metadata
         .into_iter()
         .next()
-        .expect("successful validation produces mod metadata");
+        .ok_or_else(|| Error::validation("validation completed without mod metadata"))?;
     Ok(ValidatedProject {
         project,
         layout,
@@ -96,10 +96,12 @@ fn validate_source_layout(source_root: &Path, problems: &mut Vec<Diagnostic>) {
 }
 
 /// Validates required Workshop metadata and preview assets.
-fn validate_public(project: &Project, problems: &mut Vec<Diagnostic>) -> Option<WorkshopMetadata> {
-    let public = ProjectLayout::new(project)
-        .and_then(ProjectLayout::public_root)
-        .expect("project layout was validated before public assets");
+fn validate_public(
+    project: &Project,
+    layout: ProjectLayout<'_>,
+    problems: &mut Vec<Diagnostic>,
+) -> Result<Option<WorkshopMetadata>> {
+    let public = layout.public_root()?;
     for name in ["description.md", "preview.png", "workshop.txt"] {
         let path = public.join(name);
         if !path.is_file() {
@@ -140,7 +142,7 @@ fn validate_public(project: &Project, problems: &mut Vec<Diagnostic>) -> Option<
     }
     let workshop_path = public.join("workshop.txt");
     if !workshop_path.is_file() {
-        return None;
+        return Ok(None);
     }
     match workshop::parse(&workshop_path) {
         Ok(metadata) => {
@@ -152,23 +154,24 @@ fn validate_public(project: &Project, problems: &mut Vec<Diagnostic>) -> Option<
                     format!("required Workshop tag is missing: {required}"),
                 ));
             }
-            Some(metadata)
+            Ok(Some(metadata))
         }
         Err(diagnostics) => {
             problems.extend(diagnostics);
-            None
+            Ok(None)
         }
     }
 }
 
 /// Validates package includes and their final mod-relative destinations.
-fn validate_package(project: &Project, problems: &mut Vec<Diagnostic>) {
+fn validate_package(
+    project: &Project,
+    layout: ProjectLayout<'_>,
+    problems: &mut Vec<Diagnostic>,
+) -> Result<()> {
     let mut destinations = BTreeMap::new();
     for included in &project.config.package.include {
-        let path = ProjectLayout::new(project)
-            .and_then(|layout| layout.included(included))
-            .map(|(_, source)| source)
-            .expect("project layout was validated before package inputs");
+        let (_, path) = layout.included(included)?;
         if !path.is_file() {
             problems.push(Diagnostic::at(
                 "package.include.missing",
@@ -204,6 +207,7 @@ fn validate_package(project: &Project, problems: &mut Vec<Diagnostic>) {
             ));
         }
     }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -215,7 +219,7 @@ mod tests {
     use tempfile::tempdir;
 
     fn png(width: u32, height: u32) -> Vec<u8> {
-        preview::generate(width, height)
+        preview::generate(width, height).unwrap()
     }
 
     fn valid_project(root: &Path) -> Project {
@@ -258,7 +262,7 @@ mod tests {
         let preview = temporary.path().join("public/preview.png");
         fs::write(&preview, png(128, 256)).unwrap();
         let mut problems = Vec::new();
-        validate_public(&value, &mut problems);
+        validate_public(&value, ProjectLayout::new(&value).unwrap(), &mut problems).unwrap();
         assert!(
             problems
                 .iter()
@@ -266,7 +270,7 @@ mod tests {
         );
 
         fs::write(&preview, vec![0; PREVIEW_MAX_BYTES as usize]).unwrap();
-        validate_public(&value, &mut problems);
+        validate_public(&value, ProjectLayout::new(&value).unwrap(), &mut problems).unwrap();
         assert!(
             problems
                 .iter()
@@ -274,7 +278,7 @@ mod tests {
         );
 
         value.config.package.include.push(PathBuf::from("MISSING"));
-        validate_package(&value, &mut problems);
+        validate_package(&value, ProjectLayout::new(&value).unwrap(), &mut problems).unwrap();
         assert!(
             problems
                 .iter()
@@ -294,7 +298,7 @@ mod tests {
             .package
             .include
             .push(PathBuf::from("42/extra.txt"));
-        validate_package(&value, &mut problems);
+        validate_package(&value, ProjectLayout::new(&value).unwrap(), &mut problems).unwrap();
         assert!(
             problems
                 .iter()

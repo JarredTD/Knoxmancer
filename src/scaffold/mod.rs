@@ -141,7 +141,11 @@ fn write_scaffold(root: &Path, name: &str, id: &str, author: &str) -> Result<()>
         templates::render(templates::WORKSHOP, &values),
     )
     .map_err(Error::io)?;
-    fs::write(root.join("public/preview.png"), preview::generate(256, 256)).map_err(Error::io)?;
+    fs::write(
+        root.join("public/preview.png"),
+        preview::generate(256, 256)?,
+    )
+    .map_err(Error::io)?;
     fs::write(root.join(".gitignore"), templates::GITIGNORE).map_err(Error::io)?;
     Ok(())
 }

@@ -10,7 +10,7 @@ use crate::cli::args::OutputFormat;
 use crate::cli::{
     Cli, Command, CompletionShell, ConfigArgs, ConfigCommand, ConfigKey, NewArgs, OpenTarget,
 };
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::project::validation::ValidationTarget;
 use crate::project::{Project, ValidatedProject, config, validation};
 use crate::scaffold::{self, NewProjectOptions};
@@ -141,12 +141,16 @@ fn doctor(start: Option<&std::path::Path>, reporter: &Reporter) -> Result<()> {
         "User configuration: defaults"
     });
     reporter.path("project", "Project", &project.root);
-    reporter.path("mods_root", "Mods root", resolved.local.parent().unwrap());
-    reporter.path(
-        "workshop_root",
-        "Workshop root",
-        resolved.workshop_staging.parent().unwrap(),
-    );
+    let mods_root = resolved
+        .local
+        .parent()
+        .ok_or_else(|| Error::project("resolved local installation has no parent directory"))?;
+    let workshop_root = resolved
+        .workshop_staging
+        .parent()
+        .ok_or_else(|| Error::project("resolved Workshop staging has no parent directory"))?;
+    reporter.path("mods_root", "Mods root", mods_root);
+    reporter.path("workshop_root", "Workshop root", workshop_root);
     report_checked(&validated, reporter);
     reporter.status("Doctor: ready for local play and Workshop packaging.");
     Ok(())
