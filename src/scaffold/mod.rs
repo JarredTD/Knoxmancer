@@ -2,6 +2,7 @@
 
 use std::env;
 use std::fs;
+use std::io;
 use std::path::{Path, PathBuf};
 
 mod naming;
@@ -45,6 +46,7 @@ pub struct NewProjectResult {
 pub fn new_project(options: &NewProjectOptions) -> Result<NewProjectResult> {
     let root = absolute(&options.directory)?;
     ensure_empty_destination(&root)?;
+    let created_root = !root.exists();
 
     let slug = root
         .file_name()
@@ -61,17 +63,37 @@ pub fn new_project(options: &NewProjectOptions) -> Result<NewProjectResult> {
     validate_text("author", &author)?;
 
     fs::create_dir_all(&root).map_err(Error::io)?;
-    if let Err(error) = write_scaffold(&root, &name, &id, &author) {
-        if root
-            .read_dir()
-            .is_ok_and(|mut entries| entries.next().is_some())
-        {
-            let _ = fs::remove_dir_all(&root);
-        }
-        return Err(error);
+    if let Err(primary) = write_scaffold(&root, &name, &id, &author) {
+        return match rollback_scaffold(&root, created_root) {
+            Ok(()) => Err(primary),
+            Err(cleanup) => Err(Error::io(io::Error::other(format!(
+                "{primary}; incomplete scaffold at {} also could not be removed: {cleanup}",
+                root.display()
+            )))),
+        };
     }
 
     Ok(NewProjectResult { root, name })
+}
+
+/// Removes files from an incomplete scaffold while preserving a pre-existing root.
+fn rollback_scaffold(root: &Path, created_root: bool) -> io::Result<()> {
+    if created_root {
+        return match fs::remove_dir_all(root) {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(error),
+        };
+    }
+    for entry in fs::read_dir(root)? {
+        let entry = entry?;
+        if entry.file_type()?.is_dir() {
+            fs::remove_dir_all(entry.path())?;
+        } else {
+            fs::remove_file(entry.path())?;
+        }
+    }
+    Ok(())
 }
 
 /// Writes a manifest for an existing source-oriented Build 42 project.
@@ -242,6 +264,24 @@ mod tests {
         };
 
         assert_eq!(new_project(&args).unwrap().root, root);
+    }
+
+    #[test]
+    fn rolls_back_scaffolds_without_removing_preexisting_roots() {
+        let temporary = tempdir().unwrap();
+        let existing = temporary.path().join("existing");
+        fs::create_dir(&existing).unwrap();
+        fs::write(existing.join("file"), "partial").unwrap();
+        fs::create_dir(existing.join("directory")).unwrap();
+        rollback_scaffold(&existing, false).unwrap();
+        assert!(existing.is_dir());
+        assert_eq!(existing.read_dir().unwrap().count(), 0);
+
+        let created = temporary.path().join("created");
+        fs::create_dir(&created).unwrap();
+        rollback_scaffold(&created, true).unwrap();
+        assert!(!created.exists());
+        rollback_scaffold(&created, true).unwrap();
     }
 
     #[test]
