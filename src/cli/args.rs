@@ -97,6 +97,8 @@ pub enum Command {
     Stage(StageArgs),
     /// Removes Knoxmancer-generated artifacts.
     Clean(CleanArgs),
+    /// Reads or updates machine-specific user defaults.
+    Config(ConfigArgs),
 }
 
 #[derive(Debug, Args)]
@@ -162,3 +164,41 @@ pub struct StageArgs {
 #[derive(Debug, Args, Default)]
 /// Arguments for generated-artifact cleanup.
 pub struct CleanArgs {}
+
+#[derive(Debug, Args)]
+/// Arguments for machine-specific user defaults.
+pub struct ConfigArgs {
+    /// Configuration operation to perform.
+    #[command(subcommand)]
+    pub command: ConfigCommand,
+}
+
+#[derive(Debug, Subcommand)]
+/// Supported user-configuration operations.
+pub enum ConfigCommand {
+    /// Displays the configuration file and effective defaults.
+    Show,
+    /// Assigns a user default.
+    Set {
+        /// Setting to assign.
+        key: ConfigKey,
+        /// New author name or absolute directory path.
+        value: String,
+    },
+    /// Removes a user default.
+    Unset {
+        /// Setting to remove.
+        key: ConfigKey,
+    },
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+/// Machine-specific setting names accepted by `km config`.
+pub enum ConfigKey {
+    /// Default author used by `km new`.
+    Author,
+    /// Default local Project Zomboid mods directory.
+    ModsRoot,
+    /// Default Project Zomboid Workshop projects directory.
+    WorkshopRoot,
+}

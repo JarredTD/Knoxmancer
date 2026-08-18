@@ -6,8 +6,14 @@ use std::process::{Command, Output};
 use tempfile::tempdir;
 
 fn km(arguments: &[&str]) -> Output {
+    let config = Path::new(env!("CARGO_MANIFEST_DIR")).join("target/test-user-config.toml");
+    km_with_config(arguments, &config)
+}
+
+fn km_with_config(arguments: &[&str], config: &Path) -> Output {
     Command::new(env!("CARGO_BIN_EXE_km"))
         .args(arguments)
+        .env("KNOXMANCER_CONFIG", config)
         .output()
         .expect("km command should run")
 }
@@ -207,6 +213,45 @@ fn reports_resolved_project_paths() {
     ] {
         assert!(stdout.contains(label), "missing {label}");
     }
+}
+
+#[test]
+fn manages_machine_specific_user_defaults() {
+    let temporary = tempdir().unwrap();
+    let config = temporary.path().join("settings/config.toml");
+    let mods = temporary.path().join("mods");
+
+    assert!(
+        km_with_config(&["config", "show"], &config)
+            .status
+            .success()
+    );
+    assert!(
+        km_with_config(&["config", "set", "author", "Test Author"], &config)
+            .status
+            .success()
+    );
+    assert!(
+        km_with_config(&["config", "set", "mods-root", path(&mods)], &config)
+            .status
+            .success()
+    );
+    let shown = km_with_config(&["config", "show"], &config);
+    let shown = String::from_utf8(shown.stdout).unwrap();
+    assert!(shown.contains("Test Author"));
+    assert!(shown.contains(&mods.display().to_string()));
+
+    assert!(
+        km_with_config(&["config", "unset", "author"], &config)
+            .status
+            .success()
+    );
+    assert!(!fs::read_to_string(&config).unwrap().contains("author"));
+    assert!(
+        !km_with_config(&["config", "set", "mods-root", "relative"], &config)
+            .status
+            .success()
+    );
 }
 
 #[test]

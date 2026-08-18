@@ -2,11 +2,12 @@
 
 use crate::build::{self, DevelopmentArtifact};
 use crate::cli::Reporter;
-use crate::cli::{Cli, Command, NewArgs};
+use crate::cli::{Cli, Command, ConfigArgs, ConfigCommand, ConfigKey, NewArgs};
 use crate::error::Result;
 use crate::project::validation::ValidationTarget;
 use crate::project::{Project, ValidatedProject, config, validation};
 use crate::scaffold::{self, NewProjectOptions};
+use crate::system::user_config::{self, UserConfig};
 
 /// Executes the selected command and reports its successful result.
 pub(crate) fn run(cli: Cli, reporter: &Reporter) -> Result<()> {
@@ -87,7 +88,62 @@ pub(crate) fn run(cli: Cli, reporter: &Reporter) -> Result<()> {
             }
             Ok(())
         }
+        Command::Config(args) => configure(args, reporter),
     }
+}
+
+/// Displays, assigns, or clears machine-specific defaults.
+fn configure(args: ConfigArgs, reporter: &Reporter) -> Result<()> {
+    let mut loaded = user_config::load()?;
+    match args.command {
+        ConfigCommand::Show => {
+            reporter.path("user_configuration", "User configuration", &loaded.path);
+            reporter.status(&format!(
+                "Default author: {}",
+                loaded.values.author.as_deref().unwrap_or("(not set)")
+            ));
+            let mods = crate::system::environment::zomboid_root(
+                loaded.values.mods_root.as_deref(),
+                "mods",
+            )?;
+            let workshop = crate::system::environment::zomboid_root(
+                loaded.values.workshop_root.as_deref(),
+                "Workshop",
+            )?;
+            reporter.path("mods_root", "Mods root", &mods);
+            reporter.path("workshop_root", "Workshop root", &workshop);
+            Ok(())
+        }
+        ConfigCommand::Set { key, value } => {
+            match key {
+                ConfigKey::Author => loaded.values.author = Some(value.trim().to_owned()),
+                ConfigKey::ModsRoot => loaded.values.mods_root = Some(value.into()),
+                ConfigKey::WorkshopRoot => loaded.values.workshop_root = Some(value.into()),
+            }
+            save_user_config(&loaded.path, &loaded.values, reporter)
+        }
+        ConfigCommand::Unset { key } => {
+            match key {
+                ConfigKey::Author => loaded.values.author = None,
+                ConfigKey::ModsRoot => loaded.values.mods_root = None,
+                ConfigKey::WorkshopRoot => loaded.values.workshop_root = None,
+            }
+            save_user_config(&loaded.path, &loaded.values, reporter)
+        }
+    }
+}
+
+/// Saves user defaults and presents replacement cleanup warnings.
+fn save_user_config(
+    path: &std::path::Path,
+    config: &UserConfig,
+    reporter: &Reporter,
+) -> Result<()> {
+    if let Some(warning) = user_config::save(path, config)? {
+        reporter.warning(&warning);
+    }
+    reporter.status(&format!("Updated user configuration: {}", path.display()));
+    Ok(())
 }
 
 /// Discovers a project from the optional command-line starting path.
