@@ -2,7 +2,7 @@
 
 use crate::error::{Error, Result};
 use crate::project::{Project, ProjectLayout, ValidatedProject};
-use crate::system::environment::home_directory;
+use crate::system::environment::zomboid_root;
 use crate::system::fs::{
     atomic_replace, copy_file, copy_tree, remove_tree_if_exists, replace_with_copy, staging_path,
 };
@@ -70,14 +70,7 @@ pub fn install(
     artifact: &DevelopmentArtifact,
     configured_root: Option<&Path>,
 ) -> Result<InstallResult> {
-    let root = match configured_root {
-        Some(path) if path.is_absolute() => path.to_path_buf(),
-        Some(path) => std::env::current_dir().map_err(Error::io)?.join(path),
-        None => home_directory()
-            .ok_or_else(|| Error::project("home directory is unavailable; pass --root"))?
-            .join("Zomboid")
-            .join("mods"),
-    };
+    let root = zomboid_root(configured_root, "mods")?;
     let destination = root.join(&artifact.mod_id);
     if destination.parent() != Some(root.as_path()) {
         return Err(Error::project(format!(

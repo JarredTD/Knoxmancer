@@ -10,7 +10,7 @@ use description::render;
 use crate::build::assemble_mod;
 use crate::error::{Error, Result};
 use crate::project::ValidatedProject;
-use crate::system::environment::home_directory;
+use crate::system::environment::zomboid_root;
 use crate::system::fs::{
     atomic_replace, copy_file, remove_tree_if_exists, replace_with_copy, staging_path,
 };
@@ -66,14 +66,7 @@ pub(crate) fn stage(
     package: &PackageResult,
     configured_root: Option<&Path>,
 ) -> Result<StageResult> {
-    let root = match configured_root {
-        Some(path) if path.is_absolute() => path.to_path_buf(),
-        Some(path) => std::env::current_dir().map_err(Error::io)?.join(path),
-        None => home_directory()
-            .ok_or_else(|| Error::project("home directory is unavailable; pass --root"))?
-            .join("Zomboid")
-            .join("Workshop"),
-    };
+    let root = zomboid_root(configured_root, "Workshop")?;
     let destination = root.join(&package.mod_id);
     if destination.parent() != Some(root.as_path()) {
         return Err(Error::project(format!(
