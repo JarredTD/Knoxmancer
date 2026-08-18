@@ -46,3 +46,17 @@ impl fmt::Display for Diagnostic {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn formats_diagnostics_with_and_without_paths() {
+        assert_eq!(Diagnostic::new("test", "message").to_string(), "message");
+        assert_eq!(
+            Diagnostic::at("test", "mod.info", "message").to_string(),
+            "mod.info: message"
+        );
+    }
+}

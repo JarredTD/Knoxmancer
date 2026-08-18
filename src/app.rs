@@ -41,7 +41,7 @@ pub(crate) fn run(cli: Cli, reporter: &Reporter) -> Result<()> {
             reporter.status(&format!("Installed {}", installed.path.display()));
             Ok(())
         }
-        Command::Package(_) => {
+        Command::Package(args) => {
             let project = discover(project_start.as_deref())?;
             let validated = validation::check(&project, true)?;
             report_checked(&validated, reporter);
@@ -53,6 +53,14 @@ pub(crate) fn run(cli: Cli, reporter: &Reporter) -> Result<()> {
                 "Packaged Workshop artifact: {}",
                 packaged.path.display()
             ));
+            if args.stage {
+                let staged = crate::workshop::stage(&packaged, args.root.as_deref())?;
+                report_warnings(&staged.warnings, reporter);
+                reporter.status(&format!(
+                    "Staged Workshop artifact: {}",
+                    staged.path.display()
+                ));
+            }
             Ok(())
         }
         Command::Clean(_) => {

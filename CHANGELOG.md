@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Detect Steam and stage Workshop packages for the Project Zomboid uploader.
+
 ## 0.2.0
 
 - Author mods from flat `src/client`, `src/shared`, `src/server`, and `src/media` directories.

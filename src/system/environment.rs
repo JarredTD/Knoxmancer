@@ -19,6 +19,10 @@ pub(crate) fn doctor() -> Vec<String> {
     } else {
         lines.push("Local mods: home directory unavailable".to_owned());
     }
+    lines.push(match super::steam::project_zomboid_mods_root() {
+        Ok(path) => format!("Workshop staging: {} (found)", path.display()),
+        Err(error) => format!("Workshop staging: not found ({error})"),
+    });
     lines
 }
 

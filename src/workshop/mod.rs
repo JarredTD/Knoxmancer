@@ -1,6 +1,7 @@
 //! Steam Workshop upload tree construction.
 
 use std::fs;
+use std::path::{Path, PathBuf};
 
 mod description;
 
@@ -77,6 +78,35 @@ pub(crate) fn package(
     let replacement = result?;
     Ok(PackageResult {
         path: destination,
+        mod_id: metadata.id.clone(),
+        warnings: replacement.cleanup_warning.into_iter().collect(),
+    })
+}
+
+/// Atomically stages a Workshop package for Project Zomboid's uploader.
+pub(crate) fn stage(
+    package: &PackageResult,
+    configured_root: Option<&Path>,
+) -> Result<StageResult> {
+    let root = match configured_root {
+        Some(path) if path.is_absolute() => path.to_path_buf(),
+        Some(path) => std::env::current_dir().map_err(Error::io)?.join(path),
+        None => crate::system::steam::project_zomboid_mods_root()?,
+    };
+    let destination = root.join(&package.mod_id);
+    if destination.parent() != Some(root.as_path()) {
+        return Err(Error::project(format!(
+            "unsafe Workshop staging destination: {}",
+            destination.display()
+        )));
+    }
+    fs::create_dir_all(&root).map_err(Error::io)?;
+    let staging = staging_path(&root, &package.mod_id);
+    remove_tree_if_exists(&staging)?;
+    copy_tree(&package.path, &staging)?;
+    let replacement = atomic_replace(&staging, &destination)?;
+    Ok(StageResult {
+        path: destination,
         warnings: replacement.cleanup_warning.into_iter().collect(),
     })
 }
@@ -85,7 +115,18 @@ pub(crate) fn package(
 #[derive(Debug)]
 pub(crate) struct PackageResult {
     /// Root of the completed Workshop upload tree.
-    pub path: std::path::PathBuf,
+    pub path: PathBuf,
+    /// Project Zomboid identifier used as the uploader directory name.
+    mod_id: String,
+    /// Non-fatal cleanup warnings produced during replacement.
+    pub warnings: Vec<String>,
+}
+
+/// Result of staging a package for Project Zomboid's Workshop uploader.
+#[derive(Debug)]
+pub(crate) struct StageResult {
+    /// Final uploader staging directory.
+    pub path: PathBuf,
     /// Non-fatal cleanup warnings produced during replacement.
     pub warnings: Vec<String>,
 }

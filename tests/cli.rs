@@ -20,6 +20,7 @@ fn scaffolds_checks_builds_packages_installs_and_cleans() {
     let temporary = tempdir().unwrap();
     let project = temporary.path().join("example-mod");
     let mods = temporary.path().join("mods");
+    let workshop_mods = temporary.path().join("workshop-mods");
 
     assert!(
         km(&["new", path(&project), "--author", "Test Author"])
@@ -35,9 +36,16 @@ fn scaffolds_checks_builds_packages_installs_and_cleans() {
         String::from_utf8_lossy(&release.stderr)
     );
     assert!(
-        km(&["--project", path(&project), "package"])
-            .status
-            .success()
+        km(&[
+            "--project",
+            path(&project),
+            "package",
+            "--stage",
+            "--root",
+            path(&workshop_mods),
+        ])
+        .status
+        .success()
     );
     assert!(
         km(&[
@@ -58,6 +66,11 @@ fn scaffolds_checks_builds_packages_installs_and_cleans() {
             .is_file()
     );
     assert!(mods.join("ExampleMod/42/mod.info").is_file());
+    assert!(
+        workshop_mods
+            .join("ExampleMod/Contents/mods/ExampleMod/42/mod.info")
+            .is_file()
+    );
 
     assert!(km(&["--project", path(&project), "clean"]).status.success());
     assert!(!project.join("dist").exists());
@@ -129,7 +142,13 @@ fn full_and_short_binaries_expose_the_same_version() {
     let help = km(&["--help"]);
     let help = String::from_utf8(help.stdout).unwrap();
     assert!(help.contains("Creates a complete Project Zomboid mod project"));
-    assert!(help.contains("Creates a verified Steam Workshop directory tree"));
+    assert!(
+        help.contains("Creates and optionally stages a verified Steam Workshop directory tree")
+    );
+    let package_help = km(&["package", "--help"]);
+    let package_help = String::from_utf8(package_help.stdout).unwrap();
+    assert!(package_help.contains("--stage"));
+    assert!(package_help.contains("--root"));
 }
 
 #[test]

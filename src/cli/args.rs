@@ -98,7 +98,7 @@ pub enum Command {
     Build(BuildArgs),
     /// Builds and atomically installs the mod locally.
     Install(InstallArgs),
-    /// Creates a verified Steam Workshop directory tree.
+    /// Creates and optionally stages a verified Steam Workshop directory tree.
     Package(PackageArgs),
     /// Removes Knoxmancer-generated artifacts.
     Clean(CleanArgs),
@@ -163,8 +163,15 @@ pub struct InstallArgs {
 }
 
 #[derive(Debug, Args, Default)]
-/// Arguments for Workshop package construction.
-pub struct PackageArgs {}
+/// Arguments for Workshop package construction and uploader staging.
+pub struct PackageArgs {
+    #[arg(long)]
+    /// Stages the package in the installed Project Zomboid uploader directory.
+    pub stage: bool,
+    #[arg(long, value_name = "PATH", requires = "stage")]
+    /// Overrides the detected Project Zomboid uploader mods root.
+    pub root: Option<PathBuf>,
+}
 
 #[derive(Debug, Args, Default)]
 /// Arguments for generated-artifact cleanup.
