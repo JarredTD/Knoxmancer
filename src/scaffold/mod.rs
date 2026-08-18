@@ -103,12 +103,7 @@ pub fn init_project(explicit_root: Option<&Path>, force: bool) -> Result<PathBuf
 
 /// Writes directories, metadata, assets, and project files for a new scaffold.
 fn write_scaffold(root: &Path, name: &str, id: &str, author: &str, build: &str) -> Result<()> {
-    let config = Config {
-        release: crate::project::config::ReleaseConfig {
-            include: vec![PathBuf::from("CHANGELOG.md"), PathBuf::from("LICENSE")],
-        },
-        ..Config::default()
-    };
+    let config = Config::default();
     write_manifest(root, &config)?;
 
     let source = root.join("src");
@@ -155,7 +150,6 @@ fn write_scaffold(root: &Path, name: &str, id: &str, author: &str, build: &str) 
         templates::render(templates::README, &values),
     )
     .map_err(Error::io)?;
-    fs::write(root.join("LICENSE"), include_str!("../../LICENSE")).map_err(Error::io)?;
     fs::write(
         root.join("public/description.md"),
         templates::render(templates::DESCRIPTION, &values),
