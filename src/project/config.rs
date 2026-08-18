@@ -14,7 +14,6 @@ pub const MANIFEST_NAME: &str = "knoxmancer.toml";
 pub struct Config {
     pub project: ProjectConfig,
     pub paths: PathsConfig,
-    pub test: TestConfig,
     pub release: ReleaseConfig,
 }
 
@@ -48,12 +47,6 @@ impl Default for PathsConfig {
             output: PathBuf::from("dist"),
         }
     }
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(default)]
-pub struct TestConfig {
-    pub command: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]

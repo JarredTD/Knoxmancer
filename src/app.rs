@@ -28,20 +28,6 @@ pub(crate) fn run(cli: Cli, reporter: &Reporter) -> Result<()> {
             report_checked(&validated, reporter);
             Ok(())
         }
-        Command::Test(_) => {
-            let project = discover(project_start.as_deref())?;
-            let validated = validation::check(&project, false)?;
-            report_checked(&validated, reporter);
-            reporter.status(&format!(
-                "Running {}",
-                project.config.test.command.join(" ")
-            ));
-            for line in crate::project::test_runner::run(&validated)? {
-                reporter.status(&line);
-            }
-            reporter.status("Tests passed");
-            Ok(())
-        }
         Command::Build(args) => {
             let project = discover(project_start.as_deref())?;
             build(&project, profile(args.release), reporter).map(|_| ())

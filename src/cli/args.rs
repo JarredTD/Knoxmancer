@@ -78,8 +78,6 @@ pub enum Command {
     Doctor(DoctorArgs),
     /// Validates project structure, metadata, and assets.
     Check(CheckArgs),
-    /// Runs the test command configured by the project.
-    Test(TestArgs),
     /// Creates a development or release artifact.
     Build(BuildArgs),
     /// Builds and atomically installs the mod locally.
@@ -117,9 +115,6 @@ pub struct CheckArgs {
     #[arg(long)]
     pub release: bool,
 }
-
-#[derive(Debug, Args, Default)]
-pub struct TestArgs {}
 
 #[derive(Debug, Args, Default)]
 pub struct BuildArgs {

@@ -91,18 +91,12 @@ pub fn init_project(explicit_root: Option<&Path>, force: bool) -> Result<PathBuf
         .map(PathBuf::from)
         .filter(|path| root.join(path).is_file())
         .collect();
-    if root.join("tests/run.lua").is_file() {
-        config.test.command = vec!["lua5.1".to_owned(), "tests/run.lua".to_owned()];
-    }
     write_manifest(&root, &config)?;
     Ok(root)
 }
 
 fn write_scaffold(root: &Path, name: &str, id: &str, author: &str, build: &str) -> Result<()> {
     let config = Config {
-        test: crate::project::config::TestConfig {
-            command: vec!["lua5.1".to_owned(), "tests/run.lua".to_owned()],
-        },
         release: crate::project::config::ReleaseConfig {
             include: vec![PathBuf::from("CHANGELOG.md"), PathBuf::from("LICENSE")],
             minify: None,
@@ -119,8 +113,6 @@ fn write_scaffold(root: &Path, name: &str, id: &str, author: &str, build: &str) 
         media.join("scripts"),
         media.join("textures"),
         root.join("public"),
-        root.join("tests"),
-        root.join(".github/workflows"),
     ] {
         fs::create_dir_all(directory).map_err(Error::io)?;
     }
@@ -168,9 +160,7 @@ fn write_scaffold(root: &Path, name: &str, id: &str, author: &str, build: &str) 
     )
     .map_err(Error::io)?;
     fs::write(root.join("public/preview.png"), preview::generate(256, 256)).map_err(Error::io)?;
-    fs::write(root.join("tests/run.lua"), templates::TEST_RUNNER).map_err(Error::io)?;
     fs::write(root.join(".gitignore"), templates::GITIGNORE).map_err(Error::io)?;
-    fs::write(root.join(".github/workflows/ci.yml"), templates::CI).map_err(Error::io)?;
     Ok(())
 }
 

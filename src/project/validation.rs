@@ -220,7 +220,6 @@ fn validate_release(project: &Project, problems: &mut Vec<Diagnostic>) {
 mod tests {
     use super::*;
     use crate::project::config::Config;
-    use crate::project::test_runner;
     use crate::system::environment::{command_exists, home_directory};
     use std::path::PathBuf;
     use tempfile::tempdir;
@@ -333,14 +332,9 @@ mod tests {
     }
 
     #[test]
-    fn validates_test_configuration_and_project_files() {
+    fn validates_project_files_and_environment_helpers() {
         let temporary = tempdir().unwrap();
-        let mut value = valid_project(temporary.path());
-        let validated = check(&value, false).unwrap();
-        assert!(test_runner::run(&validated).is_err());
-        value.config.test.command = vec!["knoxmancer-command-that-does-not-exist".to_owned()];
-        let validated = check(&value, false).unwrap();
-        assert!(test_runner::run(&validated).is_err());
+        let value = valid_project(temporary.path());
 
         fs::remove_file(temporary.path().join("public/description.md")).unwrap();
         assert!(check(&value, false).is_err());

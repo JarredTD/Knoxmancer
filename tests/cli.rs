@@ -177,48 +177,6 @@ fn reports_validation_failures_and_recovers_after_correction() {
 }
 
 #[test]
-fn executes_configured_test_commands_and_propagates_failures() {
-    let temporary = tempdir().unwrap();
-    let project = temporary.path().join("test-mod");
-    assert!(
-        km(&["new", path(&project), "--author", "Tester"])
-            .status
-            .success()
-    );
-    let manifest = project.join("knoxmancer.toml");
-    let source = fs::read_to_string(&manifest).unwrap();
-    let executable = path(Path::new(env!("CARGO_BIN_EXE_km"))).replace('\\', "/");
-    fs::write(
-        &manifest,
-        source.replace(
-            "command = [\n    \"lua5.1\",\n    \"tests/run.lua\",\n]",
-            &format!("command = [\"{executable}\", \"--version\"]"),
-        ),
-    )
-    .unwrap();
-    assert!(km(&["--project", path(&project), "test"]).status.success());
-
-    let quiet = km(&["--quiet", "--project", path(&project), "test"]);
-    assert!(quiet.status.success());
-    assert!(quiet.stdout.is_empty());
-    assert!(quiet.stderr.is_empty());
-
-    let json = km(&["--format", "json", "--project", path(&project), "test"]);
-    assert!(json.status.success());
-    for line in String::from_utf8(json.stdout).unwrap().lines() {
-        serde_json::from_str::<serde_json::Value>(line).unwrap();
-    }
-
-    let source = fs::read_to_string(&manifest).unwrap();
-    fs::write(
-        &manifest,
-        source.replace("\"--version\"", "\"unknown-command\""),
-    )
-    .unwrap();
-    assert!(!km(&["--project", path(&project), "test"]).status.success());
-}
-
-#[test]
 fn supports_minification_and_replacing_existing_artifacts() {
     let temporary = tempdir().unwrap();
     let project = temporary.path().join("release-mod");

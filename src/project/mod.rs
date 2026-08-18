@@ -1,11 +1,10 @@
-//! Mod project configuration, paths, metadata, validation, and tests.
+//! Mod project configuration, paths, metadata, and validation.
 
 pub(crate) mod config;
 mod diagnostic;
 mod layout;
 mod metadata;
 pub(crate) mod preview;
-pub(crate) mod test_runner;
 pub(crate) mod validation;
 
 pub(crate) use config::Project;

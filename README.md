@@ -18,7 +18,6 @@ km new <directory>       Create a Build 42 project
 km init                  Adopt the current project
 km doctor                Inspect local tools and paths
 km check                 Validate a project
-km test                  Run the configured test command
 km build                 Build a readable artifact
 km build --release       Build a release artifact
 km install               Install a local development build

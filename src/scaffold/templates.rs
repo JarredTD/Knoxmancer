@@ -5,9 +5,7 @@ pub(crate) const CHANGELOG: &str = include_str!("../../templates/CHANGELOG.md");
 pub(crate) const README: &str = include_str!("../../templates/README.md");
 pub(crate) const DESCRIPTION: &str = include_str!("../../templates/description.md");
 pub(crate) const WORKSHOP: &str = include_str!("../../templates/workshop.txt");
-pub(crate) const TEST_RUNNER: &str = include_str!("../../templates/run.lua");
 pub(crate) const GITIGNORE: &str = include_str!("../../templates/gitignore");
-pub(crate) const CI: &str = include_str!("../../templates/ci.yml");
 
 pub(crate) fn render(template: &str, values: &[(&str, &str)]) -> String {
     let mut rendered = String::with_capacity(template.len());
@@ -42,11 +40,5 @@ mod tests {
             &[("name", "{{id}}"), ("id", "Example")],
         );
         assert_eq!(rendered, "name={{id}} id=Example keep={{UNKNOWN}}");
-    }
-
-    #[test]
-    fn generated_workflow_installs_knoxmancer() {
-        assert!(CI.contains("cargo install knoxmancer --locked"));
-        assert!(!CI.contains("--version"));
     }
 }
