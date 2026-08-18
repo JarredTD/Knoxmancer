@@ -190,6 +190,7 @@ fn diagnoses_the_environment_without_a_project() {
     assert!(output.status.success());
     let stderr = String::from_utf8(output.stderr).unwrap();
     assert!(stderr.contains("Knoxmancer environment"));
+    assert!(!stderr.contains("git:"));
     assert!(stderr.contains("Local mods:"));
     assert!(stderr.contains("Workshop projects:"));
 }

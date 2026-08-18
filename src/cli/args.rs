@@ -95,7 +95,7 @@ pub struct NewArgs {
     /// Game-facing mod identifier; derived from the directory when omitted.
     pub id: Option<String>,
     #[arg(long)]
-    /// Mod author; derived from the local environment when omitted.
+    /// Mod author; uses `Your Name` when omitted.
     pub author: Option<String>,
     #[arg(long, default_value = "42", value_parser = ["42"])]
     /// Project Zomboid build directory to scaffold.

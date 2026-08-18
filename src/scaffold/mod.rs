@@ -10,11 +10,12 @@ mod templates;
 use crate::error::{Error, Result};
 use crate::project::config::{Config, MANIFEST_NAME};
 use crate::project::preview;
-use crate::system::environment::default_author;
 use naming::{display_name, mod_id, validate_id, validate_text};
 
 /// Initial semantic version assigned to newly scaffolded mods.
 const INITIAL_VERSION: &str = "0.1.0";
+/// Visible author placeholder used when no explicit author is supplied.
+const DEFAULT_AUTHOR: &str = "Your Name";
 
 #[derive(Debug)]
 /// Inputs used to scaffold a new mod project.
@@ -54,7 +55,10 @@ pub fn new_project(options: &NewProjectOptions) -> Result<NewProjectResult> {
     let name = options.name.clone().unwrap_or_else(|| display_name(slug));
     let id = options.id.clone().unwrap_or_else(|| mod_id(slug));
     validate_id(&id)?;
-    let author = options.author.clone().unwrap_or_else(default_author);
+    let author = options
+        .author
+        .clone()
+        .unwrap_or_else(|| DEFAULT_AUTHOR.to_owned());
     validate_text("mod name", &name)?;
     validate_text("author", &author)?;
 
@@ -242,6 +246,7 @@ mod tests {
         let metadata = fs::read_to_string(root.join("src/mod.info")).unwrap();
         assert!(metadata.contains("name=Derived Project"));
         assert!(metadata.contains("id=DerivedProject"));
+        assert!(metadata.contains("author=Your Name"));
         assert!(new_project(&args).is_err());
     }
 
