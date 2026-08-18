@@ -657,6 +657,14 @@ mod tests {
             fs::read_to_string(destination.join("new.txt")).unwrap(),
             "new"
         );
+
+        let destination = temporary.path().join("move-failure-artifact");
+        let staging = temporary.path().join("move-failure-staging");
+        fs::create_dir(&destination).unwrap();
+        fs::create_dir(&staging).unwrap();
+        let filesystem =
+            FaultFs::with_renames([RenameAction::Fail(io::ErrorKind::PermissionDenied)]);
+        assert!(atomic_replace_with(&filesystem, &staging, &destination).is_err());
     }
 
     #[test]
@@ -725,6 +733,10 @@ mod tests {
         let permissions = file.metadata().unwrap().permissions();
         filesystem.set_permissions(&file, permissions).unwrap();
         filesystem.remove_file(&file).unwrap();
+
+        let tree = temporary.path().join("tree");
+        fs::create_dir(&tree).unwrap();
+        filesystem.remove_dir_all(&tree).unwrap();
 
         let real_file = temporary.path().join("real-file");
         fs::write(&real_file, "data").unwrap();
@@ -823,6 +835,14 @@ mod tests {
             }
         }
 
+        let successful_rollback = FaultFs::with_renames([
+            RenameAction::Perform,
+            RenameAction::Fail(io::ErrorKind::PermissionDenied),
+            RenameAction::Perform,
+        ]);
+        assert!(atomic_write_with(&successful_rollback, &destination, b"new").is_err());
+        assert_eq!(fs::read_to_string(&destination).unwrap(), "old");
+
         let durability_failure =
             FaultFs::with_renames([RenameAction::Perform, RenameAction::Perform]);
         durability_failure.fail_removal.set(true);
@@ -833,6 +853,31 @@ mod tests {
             .unwrap();
         assert!(warning.contains("directory metadata"));
         assert!(warning.contains("old backup"));
+
+        durability_failure.fail_removal.set(false);
+        for entry in temporary.path().read_dir().unwrap() {
+            let path = entry.unwrap().path();
+            if path.to_string_lossy().contains("-backup-") {
+                fs::remove_file(path).unwrap();
+            }
+        }
+        fs::write(&destination, "old").unwrap();
+        let cleanup_sync_failure =
+            FaultFs::with_renames([RenameAction::Perform, RenameAction::Perform]);
+        cleanup_sync_failure.fail_sync.set(true);
+        let warning = atomic_write_with(&cleanup_sync_failure, &destination, b"new")
+            .unwrap()
+            .cleanup_warning
+            .unwrap();
+        assert!(warning.contains("cleanup metadata"));
+
+        let successful_create = FaultFs::with_renames([]);
+        atomic_write_with(
+            &successful_create,
+            &temporary.path().join("created.toml"),
+            b"new",
+        )
+        .unwrap();
 
         let write_failure = FaultFs::with_renames([]);
         write_failure.fail_write.set(true);

@@ -115,6 +115,13 @@ mod tests {
         })
         .unwrap();
         let project = Project::load(&root).unwrap();
+        let playable = validation::check(&project, ValidationTarget::Playable).unwrap();
+        assert!(
+            package(&playable)
+                .unwrap_err()
+                .to_string()
+                .contains("Workshop metadata was not validated")
+        );
         let validated = validation::check(&project, ValidationTarget::Workshop).unwrap();
         fs::remove_file(root.join("public/preview.png")).unwrap();
 

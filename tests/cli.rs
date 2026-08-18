@@ -231,6 +231,15 @@ fn doctor_reports_readiness_without_writing_artifacts() {
             .status
             .success()
     );
+
+    let defaults = km_with_config(&["--project", path(&project), "doctor"], &config);
+    assert!(defaults.status.success());
+    assert!(
+        String::from_utf8(defaults.stdout)
+            .unwrap()
+            .contains("User configuration: defaults")
+    );
+
     assert!(
         km_with_config(&["config", "set", "author", "Doctor"], &config)
             .status
@@ -404,6 +413,15 @@ fn manages_machine_specific_user_defaults() {
         !km_with_config(&["config", "set", "mods-root", "relative"], &config)
             .status
             .success()
+    );
+
+    let directory_config = temporary.path().join("directory-config.toml");
+    fs::create_dir(&directory_config).unwrap();
+    assert_eq!(
+        km_with_config(&["config", "set", "author", "Blocked"], &directory_config,)
+            .status
+            .code(),
+        Some(1)
     );
 }
 

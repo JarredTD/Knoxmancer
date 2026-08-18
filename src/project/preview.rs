@@ -93,5 +93,7 @@ mod tests {
     #[test]
     fn bounds_decoded_png_data() {
         assert!(inspect(&generate(1024, 1024).unwrap()).is_err());
+        assert!(generate(u32::MAX, u32::MAX).is_err());
+        assert!(generate(0, 0).is_err());
     }
 }
