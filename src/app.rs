@@ -325,3 +325,16 @@ fn report_checked(validated: &ValidatedProject<'_>, reporter: &Reporter) {
         validated.metadata.name, validated.metadata.version, validated.project.config.project.build
     ));
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::Parser;
+
+    #[test]
+    fn reports_each_cleanup_warning() {
+        let cli = Cli::try_parse_from(["km", "--quiet", "--format", "json", "check"]).unwrap();
+        let reporter = Reporter::new(cli.output_options());
+        report_warnings(&["first".to_owned(), "second".to_owned()], &reporter);
+    }
+}

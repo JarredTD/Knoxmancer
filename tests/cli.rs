@@ -194,6 +194,9 @@ fn full_and_short_binaries_expose_the_same_version() {
     let install_help = String::from_utf8(km(&["install", "--help"]).stdout).unwrap();
     assert!(!build_help.contains("--release"));
     assert!(!install_help.contains("--release"));
+    for command in ["config", "completions", "doctor", "open"] {
+        assert!(help.contains(command), "missing {command} command");
+    }
 }
 
 #[test]
@@ -416,6 +419,7 @@ fn emits_stable_json_lines_for_paths_status_and_errors() {
 
     let checked = km(&["--format", "json", "--project", path(&project), "check"]);
     assert!(checked.status.success());
+    assert!(checked.stderr.is_empty());
     let event: serde_json::Value =
         serde_json::from_slice(checked.stdout.strip_suffix(b"\n").unwrap()).unwrap();
     assert_eq!(event["type"], "status");
