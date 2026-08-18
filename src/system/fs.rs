@@ -140,6 +140,12 @@ pub(crate) fn atomic_write(destination: &Path, contents: &[u8]) -> Result<Atomic
         .file_name()
         .and_then(|name| name.to_str())
         .ok_or_else(|| Error::project("file destination has no valid name"))?;
+    if destination.exists() && !destination.is_file() {
+        return Err(Error::project(format!(
+            "file destination is not a regular file: {}",
+            destination.display()
+        )));
+    }
     fs::create_dir_all(parent).map_err(Error::io)?;
     let staging = staging_path(parent, name);
     fs::write(&staging, contents).map_err(Error::io)?;
@@ -645,6 +651,11 @@ mod tests {
                 .is_none()
         );
         assert_eq!(fs::read(destination).unwrap(), b"second");
+
+        let directory = temporary.path().join("directory");
+        fs::create_dir(&directory).unwrap();
+        assert!(atomic_write(&directory, b"data").is_err());
+        assert!(directory.is_dir());
     }
 
     #[test]
