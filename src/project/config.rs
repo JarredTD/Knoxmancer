@@ -7,19 +7,26 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, Result};
 
+/// Filename used to identify a Knoxmancer project root.
 pub const MANIFEST_NAME: &str = "knoxmancer.toml";
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default, deny_unknown_fields)]
+/// Complete deserialized project manifest.
 pub struct Config {
+    /// Supported Project Zomboid builds.
     pub project: ProjectConfig,
+    /// Project-relative source, public, and output directories.
     pub paths: PathsConfig,
+    /// Publishing artifact policy.
     pub release: ReleaseConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default, deny_unknown_fields)]
+/// Project Zomboid build configuration.
 pub struct ProjectConfig {
+    /// Build directories included in artifacts.
     pub builds: Vec<String>,
 }
 
@@ -33,9 +40,13 @@ impl Default for ProjectConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default, deny_unknown_fields)]
+/// Project-relative filesystem layout.
 pub struct PathsConfig {
+    /// Directory containing game-build source trees.
     pub source: PathBuf,
+    /// Directory containing Workshop metadata and assets.
     pub public: PathBuf,
+    /// Directory receiving generated artifacts.
     pub output: PathBuf,
 }
 
@@ -51,17 +62,23 @@ impl Default for PathsConfig {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default, deny_unknown_fields)]
+/// Files added to publishing artifacts.
 pub struct ReleaseConfig {
+    /// Project-relative files copied into release outputs.
     pub include: Vec<PathBuf>,
 }
 
 #[derive(Debug, Clone)]
+/// Loaded manifest paired with its project root.
 pub struct Project {
+    /// Directory containing `knoxmancer.toml`.
     pub root: PathBuf,
+    /// Deserialized manifest configuration.
     pub config: Config,
 }
 
 impl Project {
+    /// Searches the starting path and its ancestors for a manifest.
     pub fn discover(start: Option<&Path>) -> Result<Self> {
         let start = match start {
             Some(path) => path.to_path_buf(),
@@ -85,6 +102,7 @@ impl Project {
         )))
     }
 
+    /// Loads a manifest from an explicit project root.
     pub fn load(root: &Path) -> Result<Self> {
         let manifest = root.join(MANIFEST_NAME);
         let source = fs::read_to_string(&manifest).map_err(Error::io)?;

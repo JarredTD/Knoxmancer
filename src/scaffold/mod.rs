@@ -13,24 +13,36 @@ use crate::project::preview;
 use crate::system::environment::default_author;
 use naming::{display_name, mod_id, validate_id, validate_text};
 
+/// Initial semantic version assigned to newly scaffolded mods.
 const INITIAL_VERSION: &str = "0.1.0";
 
 #[derive(Debug)]
+/// Inputs used to scaffold a new mod project.
 pub struct NewProjectOptions {
+    /// Empty destination directory to create or populate.
     pub directory: PathBuf,
+    /// Optional human-readable mod name override.
     pub name: Option<String>,
+    /// Optional game-facing mod identifier override.
     pub id: Option<String>,
+    /// Optional author override.
     pub author: Option<String>,
+    /// Project Zomboid build directory to generate.
     pub build: String,
 }
 
 #[derive(Debug)]
+/// Identity and location of a newly scaffolded project.
 pub struct NewProjectResult {
+    /// Absolute project root.
     pub root: PathBuf,
+    /// Resolved human-readable mod name.
     pub name: String,
+    /// Generated Project Zomboid build directory.
     pub build: String,
 }
 
+/// Creates a complete mod scaffold in an empty destination.
 pub fn new_project(options: &NewProjectOptions) -> Result<NewProjectResult> {
     let root = absolute(&options.directory)?;
     ensure_empty_destination(&root)?;
@@ -64,6 +76,7 @@ pub fn new_project(options: &NewProjectOptions) -> Result<NewProjectResult> {
     })
 }
 
+/// Writes a manifest for an existing conventional or flat Build 42 project.
 pub fn init_project(explicit_root: Option<&Path>, force: bool) -> Result<PathBuf> {
     let root = absolute(explicit_root.unwrap_or(Path::new(".")))?;
     let manifest = root.join(MANIFEST_NAME);
@@ -95,6 +108,7 @@ pub fn init_project(explicit_root: Option<&Path>, force: bool) -> Result<PathBuf
     Ok(root)
 }
 
+/// Writes directories, metadata, assets, and project files for a new scaffold.
 fn write_scaffold(root: &Path, name: &str, id: &str, author: &str, build: &str) -> Result<()> {
     let config = Config {
         release: crate::project::config::ReleaseConfig {
@@ -163,12 +177,14 @@ fn write_scaffold(root: &Path, name: &str, id: &str, author: &str, build: &str) 
     Ok(())
 }
 
+/// Serializes a manifest using stable, readable TOML formatting.
 fn write_manifest(root: &Path, config: &Config) -> Result<()> {
     let encoded = toml::to_string_pretty(config)
         .map_err(|error| Error::project(format!("could not serialize configuration: {error}")))?;
     fs::write(root.join(MANIFEST_NAME), encoded).map_err(Error::io)
 }
 
+/// Accepts a missing or empty directory and rejects every other destination.
 fn ensure_empty_destination(root: &Path) -> Result<()> {
     if !root.exists() {
         return Ok(());
@@ -188,6 +204,7 @@ fn ensure_empty_destination(root: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Resolves a relative path against the current working directory.
 fn absolute(path: &Path) -> Result<PathBuf> {
     if path.is_absolute() {
         Ok(path.to_path_buf())

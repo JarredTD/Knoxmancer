@@ -9,6 +9,7 @@ use crate::error::{Error, Result};
 /// Project paths proven to remain within the project root.
 #[derive(Debug, Clone, Copy)]
 pub struct ProjectLayout<'a> {
+    /// Project whose configured paths are being resolved.
     project: &'a Project,
 }
 
@@ -75,6 +76,7 @@ impl<'a> ProjectLayout<'a> {
         Ok((relative, source))
     }
 
+    /// Resolves a relative path and verifies its existing ancestor remains in the project.
     fn confined(self, relative: PathBuf, name: &str) -> Result<PathBuf> {
         let path = self.project.root.join(&relative);
         let canonical_root = fs::canonicalize(&self.project.root).map_err(Error::io)?;
@@ -94,6 +96,7 @@ impl<'a> ProjectLayout<'a> {
         Ok(path)
     }
 
+    /// Normalizes a configured relative path without consulting the filesystem.
     fn relative(path: &Path, name: &str, allow_project_root: bool) -> Result<PathBuf> {
         let mut normalized = PathBuf::new();
         for component in path.components() {

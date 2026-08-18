@@ -1,5 +1,6 @@
 //! Project Zomboid mod development commands used by the `knoxmancer` and `km` binaries.
 #![deny(missing_docs)]
+#![deny(clippy::missing_docs_in_private_items)]
 #![forbid(unsafe_code)]
 
 mod app;
@@ -38,6 +39,7 @@ where
     }
 }
 
+/// Parses arguments, constructs an output reporter, and dispatches one command.
 fn run<I, T>(args: I) -> Result<()>
 where
     I: IntoIterator<Item = T>,

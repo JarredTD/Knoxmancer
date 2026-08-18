@@ -5,8 +5,10 @@ use std::path::Path;
 
 use super::Diagnostic;
 
+/// Placeholder replaced with rendered Workshop description lines.
 const DESCRIPTION_MARKER: &str = "{{DESCRIPTION}}";
 
+/// Validates the supported `workshop.txt` fields and description marker.
 pub(super) fn validate(path: &Path) -> Vec<Diagnostic> {
     let source = match fs::read_to_string(path) {
         Ok(source) => source,
@@ -51,6 +53,7 @@ pub(super) fn validate(path: &Path) -> Vec<Diagnostic> {
     diagnostics
 }
 
+/// Collects all values assigned to one Workshop metadata key.
 fn values<'a>(entries: &'a [(&str, &str)], key: &str) -> Vec<&'a str> {
     entries
         .iter()
@@ -58,6 +61,7 @@ fn values<'a>(entries: &'a [(&str, &str)], key: &str) -> Vec<&'a str> {
         .collect()
 }
 
+/// Requires exactly one field with a prescribed value.
 fn require_exact(
     entries: &[(&str, &str)],
     key: &str,
@@ -85,6 +89,7 @@ fn require_exact(
     }
 }
 
+/// Requires exactly one unsigned numeric Workshop identifier.
 fn require_numeric_id(entries: &[(&str, &str)], path: &Path, diagnostics: &mut Vec<Diagnostic>) {
     match values(entries, "id").as_slice() {
         [value] if value.parse::<u64>().is_ok() => {}
@@ -106,6 +111,7 @@ fn require_numeric_id(entries: &[(&str, &str)], path: &Path, diagnostics: &mut V
     }
 }
 
+/// Requires exactly one non-empty metadata field.
 fn require_nonempty(
     entries: &[(&str, &str)],
     key: &str,
@@ -132,6 +138,7 @@ fn require_nonempty(
     }
 }
 
+/// Requires exactly one supported Workshop visibility value.
 fn require_visibility(entries: &[(&str, &str)], path: &Path, diagnostics: &mut Vec<Diagnostic>) {
     match values(entries, "visibility").as_slice() {
         ["public" | "friendsOnly" | "private" | "unlisted"] => {}

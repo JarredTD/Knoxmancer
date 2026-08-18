@@ -10,12 +10,16 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Artifact policy selected for a build.
 pub enum BuildProfile {
+    /// Local development artifact with standard validation.
     Development,
+    /// Publishing artifact with release-input validation.
     Release,
 }
 
 impl BuildProfile {
+    /// Returns the directory name used for this profile.
     pub fn name(self) -> &'static str {
         match self {
             Self::Development => "dev",
@@ -25,10 +29,15 @@ impl BuildProfile {
 }
 
 #[derive(Debug)]
+/// Completed artifact and its identity metadata.
 pub struct BuildArtifact {
+    /// Root directory of the generated artifact.
     pub path: PathBuf,
+    /// Project Zomboid mod identifier.
     pub mod_id: String,
+    /// Policy used to build the artifact.
     pub profile: BuildProfile,
+    /// Non-fatal cleanup warnings produced during replacement.
     pub warnings: Vec<String>,
 }
 
@@ -57,18 +66,24 @@ impl TryFrom<BuildArtifact> for ReleaseArtifact {
 }
 
 #[derive(Debug)]
+/// Result of removing a project's generated output tree.
 pub struct CleanResult {
+    /// Configured output path inspected by the clean operation.
     pub path: PathBuf,
+    /// Whether an existing output tree was removed.
     pub removed: bool,
 }
 
 /// Result of installing an artifact locally.
 #[derive(Debug)]
 pub struct InstallResult {
+    /// Final local mod installation directory.
     pub path: PathBuf,
+    /// Non-fatal cleanup warnings produced during replacement.
     pub warnings: Vec<String>,
 }
 
+/// Builds an isolated artifact from a validated project.
 pub fn build(validated: &ValidatedProject<'_>, profile: BuildProfile) -> Result<BuildArtifact> {
     let project = validated.project;
     let metadata = &validated.metadata;
@@ -104,6 +119,7 @@ pub fn build(validated: &ValidatedProject<'_>, profile: BuildProfile) -> Result<
     })
 }
 
+/// Installs an artifact into a local Project Zomboid mods root.
 pub fn install(artifact: &BuildArtifact, configured_root: Option<&Path>) -> Result<InstallResult> {
     let root = match configured_root {
         Some(path) if path.is_absolute() => path.to_path_buf(),
@@ -130,6 +146,7 @@ pub fn install(artifact: &BuildArtifact, configured_root: Option<&Path>) -> Resu
     })
 }
 
+/// Removes all Knoxmancer-generated artifacts for a project.
 pub fn clean(project: &Project) -> Result<CleanResult> {
     let output = ProjectLayout::new(project)?.output_root()?;
     let removed = output.exists();
@@ -142,6 +159,7 @@ pub fn clean(project: &Project) -> Result<CleanResult> {
     })
 }
 
+/// Copies configured build directories and optional common sources.
 fn copy_mod_source(project: &Project, destination: &Path) -> Result<()> {
     let source_root = ProjectLayout::new(project)?.source_root()?;
     for directory in project
@@ -160,6 +178,7 @@ fn copy_mod_source(project: &Project, destination: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Copies assets required by build and package workflows.
 fn copy_public_assets(validated: &ValidatedProject<'_>, destination: &Path) -> Result<()> {
     let public = validated.layout.public_root()?;
     for name in ["preview.png", "workshop.txt"] {

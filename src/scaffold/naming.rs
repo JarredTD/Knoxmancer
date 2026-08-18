@@ -2,6 +2,7 @@
 
 use crate::error::{Error, Result};
 
+/// Converts a directory slug into a human-readable mod name.
 pub(super) fn display_name(slug: &str) -> String {
     slug.split(['-', '_'])
         .filter(|part| !part.is_empty())
@@ -16,10 +17,12 @@ pub(super) fn display_name(slug: &str) -> String {
         .join(" ")
 }
 
+/// Converts a directory slug into a game-facing mod identifier.
 pub(super) fn mod_id(slug: &str) -> String {
     display_name(slug).replace(' ', "")
 }
 
+/// Validates a mod identifier for safe metadata and path use.
 pub(super) fn validate_id(id: &str) -> Result<()> {
     if id.is_empty()
         || !id
@@ -33,6 +36,7 @@ pub(super) fn validate_id(id: &str) -> Result<()> {
     Ok(())
 }
 
+/// Rejects empty or control-character-bearing metadata text.
 pub(super) fn validate_text(field: &str, value: &str) -> Result<()> {
     if value.trim().is_empty() {
         return Err(Error::project(format!("{field} must not be empty")));

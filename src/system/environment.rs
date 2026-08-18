@@ -4,6 +4,7 @@ use std::env;
 use std::path::PathBuf;
 use std::process::Command;
 
+/// Reports Git availability and the inferred local mods directory.
 pub(crate) fn doctor() -> Vec<String> {
     let mut lines = vec!["Knoxmancer environment".to_owned()];
     lines.push(report_command("git", &["--version"]));
@@ -21,12 +22,14 @@ pub(crate) fn doctor() -> Vec<String> {
     lines
 }
 
+/// Resolves the current user's home directory from platform environment variables.
 pub(crate) fn home_directory() -> Option<PathBuf> {
     env::var_os("USERPROFILE")
         .or_else(|| env::var_os("HOME"))
         .map(PathBuf::from)
 }
 
+/// Infers a scaffold author from Git configuration or operating-system identity.
 pub(crate) fn default_author() -> String {
     let git_name = Command::new("git")
         .args(["config", "user.name"])
@@ -42,6 +45,7 @@ pub(crate) fn default_author() -> String {
         .unwrap_or_else(|| "Unknown".to_owned())
 }
 
+/// Executes a diagnostic command and formats its first output line.
 fn report_command(name: &str, arguments: &[&str]) -> String {
     match Command::new(name).args(arguments).output() {
         Ok(output) if output.status.success() => {

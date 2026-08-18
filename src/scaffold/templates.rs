@@ -1,12 +1,19 @@
 //! Embedded files used when scaffolding a mod project.
 
+/// Embedded `mod.info` scaffold template.
 pub(crate) const MOD_INFO: &str = include_str!("../../templates/mod.info");
+/// Embedded changelog scaffold template.
 pub(crate) const CHANGELOG: &str = include_str!("../../templates/CHANGELOG.md");
+/// Embedded project README scaffold template.
 pub(crate) const README: &str = include_str!("../../templates/README.md");
+/// Embedded Workshop description scaffold template.
 pub(crate) const DESCRIPTION: &str = include_str!("../../templates/description.md");
+/// Embedded `workshop.txt` scaffold template.
 pub(crate) const WORKSHOP: &str = include_str!("../../templates/workshop.txt");
+/// Embedded Git ignore-file scaffold template.
 pub(crate) const GITIGNORE: &str = include_str!("../../templates/gitignore");
 
+/// Replaces each named scaffold marker with its supplied value.
 pub(crate) fn render(template: &str, values: &[(&str, &str)]) -> String {
     let mut rendered = String::with_capacity(template.len());
     let mut remaining = template;

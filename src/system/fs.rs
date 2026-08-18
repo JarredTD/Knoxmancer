@@ -15,6 +15,7 @@ pub struct AtomicReplaceResult {
     pub cleanup_warning: Option<String>,
 }
 
+/// Recursively copies a directory while rejecting symbolic links.
 pub(crate) fn copy_tree(source: &Path, destination: &Path) -> Result<()> {
     if !source.is_dir() {
         return Err(Error::project(format!(
@@ -45,6 +46,7 @@ pub(crate) fn copy_tree(source: &Path, destination: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Copies one file after creating its destination directory.
 pub(crate) fn copy_file(source: &Path, destination: &Path) -> Result<()> {
     if let Some(parent) = destination.parent() {
         fs::create_dir_all(parent).map_err(Error::io)?;
@@ -57,6 +59,7 @@ pub(crate) fn copy_file(source: &Path, destination: &Path) -> Result<()> {
     })
 }
 
+/// Atomically replaces a directory and attempts rollback on failure.
 pub(crate) fn atomic_replace(staging: &Path, destination: &Path) -> Result<AtomicReplaceResult> {
     let parent = destination
         .parent()
@@ -97,6 +100,7 @@ pub(crate) fn atomic_replace(staging: &Path, destination: &Path) -> Result<Atomi
     Ok(AtomicReplaceResult { cleanup_warning })
 }
 
+/// Removes a directory tree after making read-only entries writable.
 pub(crate) fn remove_tree_if_exists(path: &Path) -> Result<()> {
     if !path.exists() {
         return Ok(());
@@ -118,20 +122,24 @@ pub(crate) fn remove_tree_if_exists(path: &Path) -> Result<()> {
 }
 
 #[cfg(windows)]
+/// Adds write permission using Windows permission semantics.
 fn make_writable(permissions: &mut fs::Permissions) {
     permissions.set_readonly(false);
 }
 
 #[cfg(unix)]
+/// Adds owner-write permission while preserving other Unix mode bits.
 fn make_writable(permissions: &mut fs::Permissions) {
     use std::os::unix::fs::PermissionsExt;
     permissions.set_mode(permissions.mode() | 0o200);
 }
 
+/// Creates a collision-resistant sibling path for staged replacement.
 pub(crate) fn staging_path(parent: &Path, id: &str) -> PathBuf {
     parent.join(format!(".{id}-staging-{}", unique_token()))
 }
 
+/// Combines wall-clock nanoseconds and process identity for temporary names.
 fn unique_token() -> u128 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)

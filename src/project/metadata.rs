@@ -10,13 +10,19 @@ use serde::Serialize;
 use crate::error::{Error, Result};
 
 #[derive(Debug, Clone, Serialize)]
+/// Normalized identity fields read from one build's `mod.info`.
 pub struct ModMetadata {
+    /// Human-readable mod name.
     pub name: String,
+    /// Stable game-facing mod identifier.
     pub id: String,
+    /// Semantic release version.
     pub version: String,
+    /// Project Zomboid build associated with this metadata.
     pub build: String,
 }
 
+/// Reads and validates required identity fields from `mod.info`.
 pub fn read(path: &Path, build: &str) -> Result<ModMetadata> {
     let source = fs::read_to_string(path)
         .map_err(|error| Error::validation(format!("{}: {error}", path.display())))?;
@@ -59,6 +65,7 @@ pub fn read(path: &Path, build: &str) -> Result<ModMetadata> {
     })
 }
 
+/// Parses unique key-value lines from `mod.info` source text.
 fn parse_fields(source: &str, path: &Path) -> Result<BTreeMap<String, String>> {
     let mut fields = BTreeMap::new();
     for (key, value) in source.lines().filter_map(|line| line.split_once('=')) {

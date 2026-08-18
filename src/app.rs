@@ -7,6 +7,7 @@ use crate::error::Result;
 use crate::project::{Project, ValidatedProject, config, validation};
 use crate::scaffold::{self, NewProjectOptions};
 
+/// Executes the selected command and reports its successful result.
 pub(crate) fn run(cli: Cli, reporter: &Reporter) -> Result<()> {
     let project_start = cli.project;
     match cli.command {
@@ -67,10 +68,12 @@ pub(crate) fn run(cli: Cli, reporter: &Reporter) -> Result<()> {
     }
 }
 
+/// Discovers a project from the optional command-line starting path.
 fn discover(start: Option<&std::path::Path>) -> Result<Project> {
     config::Project::discover(start)
 }
 
+/// Creates a scaffold from parsed command-line arguments.
 fn new_project(args: NewArgs, reporter: &Reporter) -> Result<()> {
     let result = scaffold::new_project(&NewProjectOptions {
         directory: args.directory,
@@ -89,12 +92,14 @@ fn new_project(args: NewArgs, reporter: &Reporter) -> Result<()> {
     Ok(())
 }
 
+/// Validates and builds a project for the requested profile.
 fn build(project: &Project, profile: BuildProfile, reporter: &Reporter) -> Result<BuildArtifact> {
     let validated = validation::check(project, profile == BuildProfile::Release)?;
     report_checked(&validated, reporter);
     build_validated(&validated, profile, reporter)
 }
 
+/// Builds a previously validated project and reports its artifact path.
 fn build_validated(
     validated: &ValidatedProject<'_>,
     profile: BuildProfile,
@@ -111,12 +116,14 @@ fn build_validated(
     Ok(artifact)
 }
 
+/// Emits non-fatal filesystem cleanup warnings.
 fn report_warnings(warnings: &[String], reporter: &Reporter) {
     for warning in warnings {
         reporter.status(&format!("Warning: {warning}"));
     }
 }
 
+/// Reports the validated mod identity, version, and supported builds.
 fn report_checked(validated: &ValidatedProject<'_>, reporter: &Reporter) {
     reporter.status(&format!(
         "Checked {} {} ({})",
@@ -134,6 +141,7 @@ fn report_checked(validated: &ValidatedProject<'_>, reporter: &Reporter) {
     ));
 }
 
+/// Maps the release switch to an artifact profile.
 fn profile(release: bool) -> BuildProfile {
     if release {
         BuildProfile::Release

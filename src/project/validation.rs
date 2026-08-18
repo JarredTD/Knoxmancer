@@ -1,3 +1,5 @@
+//! Cross-file project validation and validated-project construction.
+
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -13,16 +15,21 @@ use super::preview;
 use super::workshop;
 use crate::error::{Error, Result};
 
+/// Steam Workshop's strict preview-file size limit.
 const PREVIEW_MAX_BYTES: u64 = 1_000_000;
 
 /// A project whose configured builds and publishing inputs passed validation.
 #[derive(Debug)]
 pub struct ValidatedProject<'a> {
+    /// Source project that passed validation.
     pub project: &'a Project,
+    /// Confined filesystem layout derived from the manifest.
     pub layout: ProjectLayout<'a>,
+    /// Shared mod identity established from configured builds.
     pub metadata: ModMetadata,
 }
 
+/// Validates project structure and optionally publishing inputs.
 pub fn check(project: &Project, release: bool) -> Result<ValidatedProject<'_>> {
     let layout = ProjectLayout::new(project)?;
     let mut problems = Vec::new();
@@ -95,6 +102,7 @@ pub fn check(project: &Project, release: bool) -> Result<ValidatedProject<'_>> {
     })
 }
 
+/// Verifies the first changelog release matches the mod version.
 fn validate_changelog(root: &Path, version: &str, problems: &mut Vec<Diagnostic>) {
     let path = root.join("CHANGELOG.md");
     match fs::read_to_string(&path) {
@@ -122,6 +130,7 @@ fn validate_changelog(root: &Path, version: &str, problems: &mut Vec<Diagnostic>
     }
 }
 
+/// Validates required Workshop metadata and preview assets.
 fn validate_public(project: &Project, problems: &mut Vec<Diagnostic>) {
     let public = ProjectLayout::new(project)
         .and_then(ProjectLayout::public_root)
@@ -170,6 +179,7 @@ fn validate_public(project: &Project, problems: &mut Vec<Diagnostic>) {
     }
 }
 
+/// Validates JSON translation files under game-facing translation directories.
 fn validate_translations(source_root: &Path, problems: &mut Vec<Diagnostic>) {
     for entry in WalkDir::new(source_root) {
         let entry = match entry {
@@ -205,6 +215,7 @@ fn validate_translations(source_root: &Path, problems: &mut Vec<Diagnostic>) {
     }
 }
 
+/// Validates release includes and their final Workshop destinations.
 fn validate_release(project: &Project, problems: &mut Vec<Diagnostic>) {
     let mut destinations = BTreeMap::from([
         (

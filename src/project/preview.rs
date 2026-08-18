@@ -4,7 +4,9 @@ use std::io::Read;
 
 use flate2::read::ZlibDecoder;
 
+/// Standard eight-byte PNG file signature.
 const SIGNATURE: &[u8; 8] = b"\x89PNG\r\n\x1a\n";
+/// Maximum inflated image data accepted during preview validation.
 const DECOMPRESSED_DATA_MAX_BYTES: u64 = 2_000_000;
 
 /// Generates a valid RGBA PNG with an uncompressed zlib stream.
@@ -142,6 +144,7 @@ pub(crate) fn inspect(data: &[u8]) -> std::result::Result<(u32, u32), String> {
     dimensions.ok_or_else(|| "PNG requires an IHDR chunk".to_owned())
 }
 
+/// Appends a length-prefixed PNG chunk and its checksum.
 fn write_chunk(output: &mut Vec<u8>, kind: &[u8; 4], data: &[u8]) {
     output.extend_from_slice(&(data.len() as u32).to_be_bytes());
     output.extend_from_slice(kind);
@@ -149,6 +152,7 @@ fn write_chunk(output: &mut Vec<u8>, kind: &[u8; 4], data: &[u8]) {
     output.extend_from_slice(&crc32(&output[output.len() - data.len() - 4..]).to_be_bytes());
 }
 
+/// Computes the PNG CRC-32 checksum for chunk type and data bytes.
 fn crc32(data: &[u8]) -> u32 {
     let mut crc = u32::MAX;
     for byte in data {
@@ -160,6 +164,7 @@ fn crc32(data: &[u8]) -> u32 {
     !crc
 }
 
+/// Computes the Adler-32 checksum required by the generated zlib stream.
 fn adler32(data: &[u8]) -> u32 {
     let (mut a, mut b) = (1_u32, 0_u32);
     for byte in data {
