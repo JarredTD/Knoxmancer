@@ -197,6 +197,28 @@ fn full_and_short_binaries_expose_the_same_version() {
 }
 
 #[test]
+fn generates_supported_shell_completions() {
+    for shell in ["bash", "elvish", "fish", "powershell", "zsh"] {
+        let output = km(&["completions", shell]);
+        assert!(
+            output.status.success(),
+            "completion generation failed for {shell}"
+        );
+        assert!(!output.stdout.is_empty());
+        assert!(output.stderr.is_empty());
+    }
+
+    let quiet = km(&["--quiet", "completions", "bash"]);
+    assert!(quiet.status.success());
+    assert!(quiet.stdout.is_empty());
+    assert!(
+        !km(&["--format", "json", "completions", "bash"])
+            .status
+            .success()
+    );
+}
+
+#[test]
 fn reports_resolved_project_paths() {
     let temporary = tempdir().unwrap();
     let project = temporary.path().join("paths-mod");

@@ -99,6 +99,8 @@ pub enum Command {
     Clean(CleanArgs),
     /// Reads or updates machine-specific user defaults.
     Config(ConfigArgs),
+    /// Generates a shell completion script.
+    Completions(CompletionsArgs),
 }
 
 #[derive(Debug, Args)]
@@ -201,4 +203,38 @@ pub enum ConfigKey {
     ModsRoot,
     /// Default Project Zomboid Workshop projects directory.
     WorkshopRoot,
+}
+
+#[derive(Debug, Args)]
+/// Arguments for shell completion generation.
+pub struct CompletionsArgs {
+    /// Shell whose completion script should be generated.
+    pub shell: CompletionShell,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+/// Shells supported by completion generation.
+pub enum CompletionShell {
+    /// Bourne Again Shell.
+    Bash,
+    /// Elvish shell.
+    Elvish,
+    /// Friendly Interactive Shell.
+    Fish,
+    /// Microsoft PowerShell.
+    Powershell,
+    /// Z shell.
+    Zsh,
+}
+
+impl From<CompletionShell> for clap_complete::Shell {
+    fn from(shell: CompletionShell) -> Self {
+        match shell {
+            CompletionShell::Bash => Self::Bash,
+            CompletionShell::Elvish => Self::Elvish,
+            CompletionShell::Fish => Self::Fish,
+            CompletionShell::Powershell => Self::PowerShell,
+            CompletionShell::Zsh => Self::Zsh,
+        }
+    }
 }

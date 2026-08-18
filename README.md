@@ -31,6 +31,7 @@ This installs `knoxmancer` and its `km` alias.
 | `km stage` | Package and copy under `~/Zomboid/Workshop` for uploading |
 | `km clean` | Remove generated artifacts |
 | `km config show/set/unset` | Manage machine-specific defaults |
+| `km completions <shell>` | Generate a shell completion script |
 
 Use `km install` while developing and testing in the game. Use `km stage` when
 the mod is ready for **Workshop > Create and update items**. `km package` only
@@ -97,6 +98,13 @@ km config unset author
 
 `KNOXMANCER_CONFIG` may point to an alternate absolute configuration file.
 
+Completion scripts are written directly to standard output:
+
+```sh
+km completions powershell > _km.ps1
+km completions bash > km.bash
+```
+
 ## Output contract
 
 Successful command data and status messages are written to standard output.
@@ -109,6 +117,9 @@ contain `name` and `path`; error objects contain `kind`, `message`, and
 `exit_code`. Help remains human-readable. Exit code `0` means success, `1` means
 a project, validation, environment, or filesystem failure, and `2` means invalid
 command-line usage.
+
+Completion scripts are shell source rather than status data, so `completions`
+does not accept `--format json`.
 
 ```sh
 km --format json paths

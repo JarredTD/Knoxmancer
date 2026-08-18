@@ -2,7 +2,10 @@
 
 use crate::build::{self, DevelopmentArtifact};
 use crate::cli::Reporter;
-use crate::cli::{Cli, Command, ConfigArgs, ConfigCommand, ConfigKey, NewArgs};
+use clap::CommandFactory;
+
+use crate::cli::args::OutputFormat;
+use crate::cli::{Cli, Command, CompletionShell, ConfigArgs, ConfigCommand, ConfigKey, NewArgs};
 use crate::error::Result;
 use crate::project::validation::ValidationTarget;
 use crate::project::{Project, ValidatedProject, config, validation};
@@ -12,6 +15,8 @@ use crate::system::user_config::{self, UserConfig};
 /// Executes the selected command and reports its successful result.
 pub(crate) fn run(cli: Cli, reporter: &Reporter) -> Result<()> {
     let project_start = cli.project;
+    let quiet = cli.quiet;
+    let format = cli.format;
     match cli.command {
         Command::New(args) => {
             let config = user_config::load()?.values;
@@ -97,7 +102,27 @@ pub(crate) fn run(cli: Cli, reporter: &Reporter) -> Result<()> {
             Ok(())
         }
         Command::Config(args) => configure(args, reporter),
+        Command::Completions(args) => completions(args.shell, quiet, format),
     }
+}
+
+/// Emits a raw completion script for the requested shell.
+fn completions(shell: CompletionShell, quiet: bool, format: OutputFormat) -> Result<()> {
+    if quiet {
+        return Ok(());
+    }
+    if format == OutputFormat::Json {
+        return Err(crate::error::Error::project(
+            "--format json is not supported by the completions command",
+        ));
+    }
+    clap_complete::generate(
+        clap_complete::Shell::from(shell),
+        &mut Cli::command(),
+        "km",
+        &mut std::io::stdout(),
+    );
+    Ok(())
 }
 
 /// Displays, assigns, or clears machine-specific defaults.
