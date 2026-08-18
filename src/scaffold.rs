@@ -4,28 +4,43 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use crate::cli::{InitArgs, NewArgs};
 use crate::config::{Config, MANIFEST_NAME};
 use crate::error::{Error, Result};
-use crate::output::Reporter;
+use crate::templates;
 
 const INITIAL_VERSION: &str = "0.1.0";
 
-pub fn new_project(args: &NewArgs, reporter: &Reporter) -> Result<()> {
-    let root = absolute(&args.directory)?;
+#[derive(Debug)]
+pub struct NewProjectOptions {
+    pub directory: PathBuf,
+    pub name: Option<String>,
+    pub id: Option<String>,
+    pub author: Option<String>,
+    pub build: String,
+}
+
+#[derive(Debug)]
+pub struct NewProjectResult {
+    pub root: PathBuf,
+    pub name: String,
+    pub build: String,
+}
+
+pub fn new_project(options: &NewProjectOptions) -> Result<NewProjectResult> {
+    let root = absolute(&options.directory)?;
     ensure_empty_destination(&root)?;
 
     let slug = root
         .file_name()
         .and_then(|name| name.to_str())
         .ok_or_else(|| Error::project("project directory must have a valid UTF-8 name"))?;
-    let name = args.name.clone().unwrap_or_else(|| display_name(slug));
-    let id = args.id.clone().unwrap_or_else(|| mod_id(slug));
+    let name = options.name.clone().unwrap_or_else(|| display_name(slug));
+    let id = options.id.clone().unwrap_or_else(|| mod_id(slug));
     validate_id(&id)?;
-    let author = args.author.clone().unwrap_or_else(default_author);
+    let author = options.author.clone().unwrap_or_else(default_author);
 
     fs::create_dir_all(&root).map_err(Error::io)?;
-    if let Err(error) = write_scaffold(&root, &name, &id, &author, &args.build) {
+    if let Err(error) = write_scaffold(&root, &name, &id, &author, &options.build) {
         if root
             .read_dir()
             .is_ok_and(|mut entries| entries.next().is_some())
@@ -35,23 +50,17 @@ pub fn new_project(args: &NewArgs, reporter: &Reporter) -> Result<()> {
         return Err(error);
     }
 
-    reporter.status(&format!(
-        "Created {name} ({}) at {}",
-        build_label(&args.build),
-        root.display()
-    ));
-    reporter.status(&format!("Next: cd {} && km install", root.display()));
-    Ok(())
+    Ok(NewProjectResult {
+        root,
+        name,
+        build: options.build.clone(),
+    })
 }
 
-pub fn init_project(
-    explicit_root: Option<&Path>,
-    args: &InitArgs,
-    reporter: &Reporter,
-) -> Result<()> {
+pub fn init_project(explicit_root: Option<&Path>, force: bool) -> Result<PathBuf> {
     let root = absolute(explicit_root.unwrap_or(Path::new(".")))?;
     let manifest = root.join(MANIFEST_NAME);
-    if manifest.exists() && !args.force {
+    if manifest.exists() && !force {
         return Err(Error::project(format!(
             "{} already exists; pass --force to replace it",
             manifest.display()
@@ -79,8 +88,7 @@ pub fn init_project(
         config.test.command = vec!["lua5.1".to_owned(), "tests/run.lua".to_owned()];
     }
     write_manifest(&root, &config)?;
-    reporter.status(&format!("Initialized {}", root.display()));
-    Ok(())
+    Ok(root)
 }
 
 fn write_scaffold(root: &Path, name: &str, id: &str, author: &str, build: &str) -> Result<()> {
@@ -119,48 +127,43 @@ fn write_scaffold(root: &Path, name: &str, id: &str, author: &str, build: &str) 
         fs::write(keep, []).map_err(Error::io)?;
     }
 
+    let values = [
+        ("name", name),
+        ("id", id),
+        ("version", INITIAL_VERSION),
+        ("author", author),
+        ("build", build),
+    ];
     fs::write(
         root.join(format!("src/{build}/mod.info")),
-        format!(
-            "name={name}\nid={id}\nmodversion={INITIAL_VERSION}\ndescription={name}\nauthor={author}\nversionMin={build}.0.0\n"
-        ),
+        templates::render(templates::MOD_INFO, &values),
     )
     .map_err(Error::io)?;
     fs::write(
         root.join("CHANGELOG.md"),
-        format!("# Changelog\n\n## {INITIAL_VERSION}\n\n- Initial development release.\n"),
+        templates::render(templates::CHANGELOG, &values),
     )
     .map_err(Error::io)?;
     fs::write(
         root.join("README.md"),
-        format!("# {name}\n\nProject Zomboid {build} mod.\n"),
+        templates::render(templates::README, &values),
     )
     .map_err(Error::io)?;
     fs::write(root.join("LICENSE"), include_str!("../LICENSE")).map_err(Error::io)?;
     fs::write(
         root.join("public/description.md"),
-        format!("# {name}\n\nDescribe the mod here.\n\n## Changelog\n\n{{{{CHANGELOG}}}}\n"),
+        templates::render(templates::DESCRIPTION, &values),
     )
     .map_err(Error::io)?;
     fs::write(
         root.join("public/workshop.txt"),
-        format!(
-            "version=1\nid=0\ntitle={name}\n{{{{DESCRIPTION}}}}\ntags=Build {build}\nvisibility=public\n"
-        ),
+        templates::render(templates::WORKSHOP, &values),
     )
     .map_err(Error::io)?;
     write_preview(&root.join("public/preview.png"))?;
-    fs::write(
-        root.join("tests/run.lua"),
-        "print(\"No tests configured.\")\n",
-    )
-    .map_err(Error::io)?;
-    fs::write(root.join(".gitignore"), "dist/\n.emmyrc.json\n").map_err(Error::io)?;
-    fs::write(
-        root.join(".github/workflows/ci.yml"),
-        "name: CI\n\non: [push, pull_request]\n\njobs:\n  check:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - run: cargo install knoxmancer --locked\n      - run: knoxmancer check\n",
-    )
-    .map_err(Error::io)?;
+    fs::write(root.join("tests/run.lua"), templates::TEST_RUNNER).map_err(Error::io)?;
+    fs::write(root.join(".gitignore"), templates::GITIGNORE).map_err(Error::io)?;
+    fs::write(root.join(".github/workflows/ci.yml"), templates::CI).map_err(Error::io)?;
     Ok(())
 }
 
@@ -243,10 +246,6 @@ fn default_author() -> String {
         .unwrap_or_else(|| "Unknown".to_owned())
 }
 
-fn build_label(build: &str) -> String {
-    format!("Build {build}")
-}
-
 fn write_preview(path: &Path) -> Result<()> {
     let mut raw = Vec::with_capacity(256 * (1 + 256 * 4));
     let mut row = Vec::with_capacity(1 + 256 * 4);
@@ -318,17 +317,7 @@ fn adler32(data: &[u8]) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cli::{ColorChoice, OutputFormat, OutputOptions};
     use tempfile::tempdir;
-
-    fn reporter() -> Reporter {
-        Reporter::new(OutputOptions {
-            quiet: true,
-            verbose: false,
-            color: ColorChoice::Never,
-            format: OutputFormat::Human,
-        })
-    }
 
     #[test]
     fn creates_complete_build_42_project() {
@@ -357,18 +346,18 @@ mod tests {
     fn creates_projects_with_derived_defaults() {
         let temporary = tempdir().unwrap();
         let root = temporary.path().join("derived-project");
-        let args = NewArgs {
+        let args = NewProjectOptions {
             directory: root.clone(),
             name: None,
             id: None,
             author: None,
             build: "42".to_owned(),
         };
-        new_project(&args, &reporter()).unwrap();
+        new_project(&args).unwrap();
         let metadata = fs::read_to_string(root.join("src/42/mod.info")).unwrap();
         assert!(metadata.contains("name=Derived Project"));
         assert!(metadata.contains("id=DerivedProject"));
-        assert!(new_project(&args, &reporter()).is_err());
+        assert!(new_project(&args).is_err());
     }
 
     #[test]
@@ -394,42 +383,18 @@ mod tests {
         fs::create_dir(temporary.path().join("42")).unwrap();
         fs::write(temporary.path().join("42/mod.info"), "id=Example").unwrap();
         fs::write(temporary.path().join("LICENSE"), "license").unwrap();
-        init_project(
-            Some(temporary.path()),
-            &InitArgs { force: false },
-            &reporter(),
-        )
-        .unwrap();
+        init_project(Some(temporary.path()), false).unwrap();
         let manifest = fs::read_to_string(temporary.path().join(MANIFEST_NAME)).unwrap();
         assert!(manifest.contains("source = \".\""));
         assert!(manifest.contains("\"LICENSE\""));
-        assert!(
-            init_project(
-                Some(temporary.path()),
-                &InitArgs { force: false },
-                &reporter()
-            )
-            .is_err()
-        );
-        init_project(
-            Some(temporary.path()),
-            &InitArgs { force: true },
-            &reporter(),
-        )
-        .unwrap();
+        assert!(init_project(Some(temporary.path()), false).is_err());
+        init_project(Some(temporary.path()), true).unwrap();
     }
 
     #[test]
     fn rejects_initialization_without_mod_metadata() {
         let temporary = tempdir().unwrap();
-        assert!(
-            init_project(
-                Some(temporary.path()),
-                &InitArgs { force: false },
-                &reporter()
-            )
-            .is_err()
-        );
+        assert!(init_project(Some(temporary.path()), false).is_err());
         assert!(write_manifest(&temporary.path().join("missing"), &Config::default()).is_err());
     }
 }

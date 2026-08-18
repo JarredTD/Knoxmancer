@@ -2,18 +2,26 @@
 #![deny(missing_docs)]
 #![forbid(unsafe_code)]
 
+mod app;
 mod artifact;
 mod cli;
 mod config;
+mod environment;
 mod error;
+mod filesystem;
+mod metadata;
+mod minify;
 mod output;
 mod scaffold;
+mod templates;
+mod test_runner;
 mod validation;
+mod workshop;
 
 use std::ffi::OsString;
 
 use clap::Parser;
-use cli::{Cli, Command};
+use cli::Cli;
 use error::{Error, Result};
 use output::Reporter;
 
@@ -46,35 +54,7 @@ where
     let cli = Cli::try_parse_from(args).map_err(Error::usage)?;
     let reporter = Reporter::new(cli.output_options());
 
-    let result = (|| match cli.command {
-        Command::New(args) => scaffold::new_project(&args, &reporter),
-        Command::Init(args) => scaffold::init_project(cli.project.as_deref(), &args, &reporter),
-        Command::Doctor(args) => validation::doctor(&args, &reporter),
-        Command::Check(args) => {
-            let project = config::Project::discover(cli.project.as_deref())?;
-            validation::check(&project, args.release, &reporter).map(|_| ())
-        }
-        Command::Test(args) => {
-            let project = config::Project::discover(cli.project.as_deref())?;
-            validation::test(&project, &args, &reporter)
-        }
-        Command::Build(args) => {
-            let project = config::Project::discover(cli.project.as_deref())?;
-            artifact::build(&project, args.release, &reporter).map(|_| ())
-        }
-        Command::Install(args) => {
-            let project = config::Project::discover(cli.project.as_deref())?;
-            artifact::install(&project, &args, &reporter).map(|_| ())
-        }
-        Command::Package(args) => {
-            let project = config::Project::discover(cli.project.as_deref())?;
-            artifact::package(&project, &args, &reporter).map(|_| ())
-        }
-        Command::Clean(args) => {
-            let project = config::Project::discover(cli.project.as_deref())?;
-            artifact::clean(&project, &args, &reporter)
-        }
-    })();
+    let result = app::run(cli, &reporter);
     result.inspect_err(|error| {
         reporter.error(error);
     })

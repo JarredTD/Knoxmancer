@@ -1,49 +1,24 @@
-use std::collections::BTreeMap;
-use std::env;
 use std::fs;
-use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::path::Path;
 
 use regex::Regex;
-use serde::Serialize;
 use walkdir::WalkDir;
 
-use crate::cli::{DoctorArgs, TestArgs};
 use crate::config::Project;
+use crate::environment::command_exists;
 use crate::error::{Error, Result};
-use crate::output::Reporter;
+use crate::metadata::{ModMetadata, read as read_metadata};
 
 const PREVIEW_MAX_BYTES: u64 = 1_000_000;
 
-#[derive(Debug, Clone, Serialize)]
-pub struct ModMetadata {
-    pub name: String,
-    pub id: String,
-    pub version: String,
-    pub build: String,
+/// A project whose configured builds and publishing inputs passed validation.
+#[derive(Debug)]
+pub struct ValidatedProject<'a> {
+    pub project: &'a Project,
+    pub metadata: ModMetadata,
 }
 
-pub fn doctor(_: &DoctorArgs, reporter: &Reporter) -> Result<()> {
-    reporter.status("Knoxmancer environment");
-    report_command(reporter, "git", &["--version"]);
-    report_command(reporter, "lua5.1", &["-v"]);
-    report_command(reporter, "prometheus-lua", &["--version"]);
-
-    let home = home_directory();
-    if let Some(home) = home {
-        let mods = home.join("Zomboid/mods");
-        reporter.status(&format!(
-            "Local mods: {} ({})",
-            mods.display(),
-            if mods.is_dir() { "found" } else { "not found" }
-        ));
-    } else {
-        reporter.status("Local mods: home directory unavailable");
-    }
-    Ok(())
-}
-
-pub fn check(project: &Project, release: bool, reporter: &Reporter) -> Result<ModMetadata> {
+pub fn check(project: &Project, release: bool) -> Result<ValidatedProject<'_>> {
     let mut problems = Vec::new();
     let source_root = project.root.join(&project.config.paths.source);
     let mut metadata = Vec::new();
@@ -89,93 +64,10 @@ pub fn check(project: &Project, release: bool, reporter: &Reporter) -> Result<Mo
         .into_iter()
         .next()
         .ok_or_else(|| Error::validation("no mod metadata was found"))?;
-    reporter.status(&format!(
-        "Checked {} {} ({})",
-        result.name,
-        result.version,
-        project
-            .config
-            .project
-            .builds
-            .iter()
-            .map(|build| format!("Build {build}"))
-            .collect::<Vec<_>>()
-            .join(", ")
-    ));
-    Ok(result)
-}
-
-pub fn test(project: &Project, _: &TestArgs, reporter: &Reporter) -> Result<()> {
-    check(project, false, reporter)?;
-    let (program, arguments) = project
-        .config
-        .test
-        .command
-        .split_first()
-        .ok_or_else(|| Error::project("no test.command is configured in knoxmancer.toml"))?;
-    reporter.status(&format!(
-        "Running {}",
-        project.config.test.command.join(" ")
-    ));
-    let status = Command::new(program)
-        .args(arguments)
-        .current_dir(&project.root)
-        .status()
-        .map_err(|error| Error::tool(format!("could not run {program}: {error}")))?;
-    if !status.success() {
-        return Err(Error::tool(format!(
-            "test command exited with {}",
-            status
-                .code()
-                .map_or_else(|| "a signal".to_owned(), |code| code.to_string())
-        )));
-    }
-    reporter.status("Tests passed");
-    Ok(())
-}
-
-pub fn read_metadata(path: &Path, build: &str) -> Result<ModMetadata> {
-    let source = fs::read_to_string(path)
-        .map_err(|error| Error::validation(format!("{}: {error}", path.display())))?;
-    let fields = parse_fields(&source);
-    let required = |key: &str| {
-        fields
-            .get(key)
-            .cloned()
-            .ok_or_else(|| Error::validation(format!("{}: missing `{key}`", path.display())))
-    };
-    let version = required("modversion")?;
-    let semantic_version = Regex::new(r"^\d+\.\d+\.\d+$").expect("valid regex");
-    if !semantic_version.is_match(&version) {
-        return Err(Error::validation(format!(
-            "{}: modversion `{version}` must use MAJOR.MINOR.PATCH",
-            path.display()
-        )));
-    }
-    let id = required("id")?;
-    if !id
-        .chars()
-        .all(|character| character.is_ascii_alphanumeric() || character == '_')
-    {
-        return Err(Error::validation(format!(
-            "{}: id `{id}` contains unsupported characters",
-            path.display()
-        )));
-    }
-    Ok(ModMetadata {
-        name: required("name")?,
-        id,
-        version,
-        build: build.to_owned(),
+    Ok(ValidatedProject {
+        project,
+        metadata: result,
     })
-}
-
-fn parse_fields(source: &str) -> BTreeMap<String, String> {
-    source
-        .lines()
-        .filter_map(|line| line.split_once('='))
-        .map(|(key, value)| (key.trim().to_owned(), value.trim().to_owned()))
-        .collect()
 }
 
 fn validate_changelog(root: &Path, version: &str, problems: &mut Vec<String>) {
@@ -275,45 +167,14 @@ fn validate_release(project: &Project, problems: &mut Vec<String>) {
     }
 }
 
-fn report_command(reporter: &Reporter, name: &str, arguments: &[&str]) {
-    match Command::new(name).args(arguments).output() {
-        Ok(output) if output.status.success() => {
-            let text = if output.stdout.is_empty() {
-                &output.stderr
-            } else {
-                &output.stdout
-            };
-            reporter.status(&format!("{name}: {}", String::from_utf8_lossy(text).trim()));
-        }
-        _ => reporter.status(&format!("{name}: not found")),
-    }
-}
-
-fn command_exists(command: &str) -> bool {
-    Command::new(command).arg("--version").output().is_ok()
-}
-
-pub fn home_directory() -> Option<PathBuf> {
-    env::var_os("USERPROFILE")
-        .or_else(|| env::var_os("HOME"))
-        .map(PathBuf::from)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cli::{ColorChoice, OutputFormat, OutputOptions};
     use crate::config::Config;
+    use crate::environment::{command_exists, home_directory};
+    use crate::test_runner;
+    use std::path::PathBuf;
     use tempfile::tempdir;
-
-    fn reporter() -> Reporter {
-        Reporter::new(OutputOptions {
-            quiet: true,
-            verbose: false,
-            color: ColorChoice::Never,
-            format: OutputFormat::Human,
-        })
-    }
 
     fn valid_project(root: &Path) -> Project {
         fs::create_dir_all(root.join("src/42")).unwrap();
@@ -381,12 +242,12 @@ mod tests {
         )
         .unwrap();
         value.config.project.builds.push("41".to_owned());
-        let error = check(&value, false, &reporter()).unwrap_err().to_string();
+        let error = check(&value, false).unwrap_err().to_string();
         assert!(error.contains("uses ID Other"));
         assert!(error.contains("uses version 2.0.0"));
 
         value.config.project.builds.clear();
-        assert!(check(&value, false, &reporter()).is_err());
+        assert!(check(&value, false).is_err());
     }
 
     #[test]
@@ -453,12 +314,14 @@ mod tests {
     fn validates_test_configuration_and_project_files() {
         let temporary = tempdir().unwrap();
         let mut value = valid_project(temporary.path());
-        assert!(test(&value, &TestArgs {}, &reporter()).is_err());
+        let validated = check(&value, false).unwrap();
+        assert!(test_runner::run(&validated).is_err());
         value.config.test.command = vec!["knoxmancer-command-that-does-not-exist".to_owned()];
-        assert!(test(&value, &TestArgs {}, &reporter()).is_err());
+        let validated = check(&value, false).unwrap();
+        assert!(test_runner::run(&validated).is_err());
 
         fs::remove_file(temporary.path().join("public/description.md")).unwrap();
-        assert!(check(&value, false, &reporter()).is_err());
+        assert!(check(&value, false).is_err());
         assert!(home_directory().is_some());
         assert!(!command_exists("knoxmancer-command-that-does-not-exist"));
     }

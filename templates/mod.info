@@ -1,0 +1,6 @@
+name={{name}}
+id={{id}}
+modversion={{version}}
+description={{name}}
+author={{author}}
+versionMin={{build}}.0.0
