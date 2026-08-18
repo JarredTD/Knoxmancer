@@ -11,5 +11,4 @@ mod workshop;
 pub(crate) use config::Project;
 pub(crate) use diagnostic::Diagnostic;
 pub(crate) use layout::ProjectLayout;
-pub(crate) use metadata::ModMetadata;
 pub(crate) use validation::ValidatedProject;

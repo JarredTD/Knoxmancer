@@ -13,6 +13,7 @@ use crate::system::fs::{
     atomic_replace, copy_file, copy_tree, remove_tree_if_exists, staging_path,
 };
 
+/// Builds and atomically replaces a Steam Workshop upload tree.
 pub(crate) fn package(
     validated: &ValidatedProject<'_>,
     release: &ReleaseArtifact,
@@ -67,7 +68,7 @@ pub(crate) fn package(
         }
         let public = validated.layout.public_root()?;
         copy_file(&public.join("preview.png"), &staging.join("preview.png"))?;
-        fs::write(staging.join("workshop.txt"), render(project, metadata)?).map_err(Error::io)?;
+        fs::write(staging.join("workshop.txt"), render(project)?).map_err(Error::io)?;
         atomic_replace(&staging, &destination)
     })();
     if result.is_err() {
@@ -83,6 +84,8 @@ pub(crate) fn package(
 /// Result of assembling a Steam Workshop upload tree.
 #[derive(Debug)]
 pub(crate) struct PackageResult {
+    /// Root of the completed Workshop upload tree.
     pub path: std::path::PathBuf,
+    /// Non-fatal cleanup warnings produced during replacement.
     pub warnings: Vec<String>,
 }
