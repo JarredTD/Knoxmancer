@@ -1,7 +1,7 @@
 //! Safe filesystem operations shared by build and publishing workflows.
 
 use std::fs;
-use std::io;
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -26,6 +26,10 @@ trait MutationFs {
     fn remove_file(&self, path: &Path) -> io::Result<()>;
     /// Replaces filesystem permissions.
     fn set_permissions(&self, path: &Path, permissions: fs::Permissions) -> io::Result<()>;
+    /// Creates and durably writes a new file.
+    fn write_synced(&self, path: &Path, contents: &[u8]) -> io::Result<()>;
+    /// Flushes directory metadata where the platform supports it.
+    fn sync_dir(&self, path: &Path) -> io::Result<()>;
 }
 
 /// Production filesystem mutation implementation.
@@ -55,6 +59,23 @@ impl MutationFs for RealFs {
 
     fn set_permissions(&self, path: &Path, permissions: fs::Permissions) -> io::Result<()> {
         fs::set_permissions(path, permissions)
+    }
+
+    fn write_synced(&self, path: &Path, contents: &[u8]) -> io::Result<()> {
+        let mut file = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(path)?;
+        file.write_all(contents)?;
+        file.sync_all()
+    }
+
+    fn sync_dir(&self, path: &Path) -> io::Result<()> {
+        #[cfg(unix)]
+        fs::File::open(path)?.sync_all()?;
+        #[cfg(not(unix))]
+        let _ = path;
+        Ok(())
     }
 }
 
@@ -133,6 +154,15 @@ pub(crate) fn copy_file(source: &Path, destination: &Path) -> Result<()> {
 
 /// Atomically writes a file and reports any obsolete-backup cleanup failure.
 pub(crate) fn atomic_write(destination: &Path, contents: &[u8]) -> Result<AtomicReplaceResult> {
+    atomic_write_with(&RealFs, destination, contents)
+}
+
+/// Atomically writes a file using supplied filesystem mutations.
+fn atomic_write_with(
+    filesystem: &impl MutationFs,
+    destination: &Path,
+    contents: &[u8],
+) -> Result<AtomicReplaceResult> {
     let parent = destination
         .parent()
         .ok_or_else(|| Error::project("file destination has no parent"))?;
@@ -146,43 +176,95 @@ pub(crate) fn atomic_write(destination: &Path, contents: &[u8]) -> Result<Atomic
             destination.display()
         )));
     }
-    fs::create_dir_all(parent).map_err(Error::io)?;
+    filesystem.create_dir_all(parent).map_err(Error::io)?;
     let staging = staging_path(parent, name);
-    fs::write(&staging, contents).map_err(Error::io)?;
+    if let Err(error) = filesystem.write_synced(&staging, contents) {
+        return Err(with_file_cleanup(
+            Error::io(error),
+            filesystem.remove_file(&staging),
+            &staging,
+        ));
+    }
     let backup = parent.join(format!(".{name}-backup-{}", unique_token()));
 
     if destination.exists()
-        && let Err(error) = fs::rename(destination, &backup)
+        && let Err(error) = filesystem.rename(destination, &backup)
     {
-        let _ = fs::remove_file(&staging);
-        return Err(destination_error(
-            error,
-            destination,
-            "could not move the existing file",
+        return Err(with_file_cleanup(
+            destination_error(error, destination, "could not move the existing file"),
+            filesystem.remove_file(&staging),
+            &staging,
         ));
     }
-    if let Err(error) = fs::rename(&staging, destination) {
-        if backup.exists() && !destination.exists() {
-            let _ = fs::rename(&backup, destination);
+    if let Err(error) = filesystem.rename(&staging, destination) {
+        if backup.exists()
+            && !destination.exists()
+            && let Err(rollback) = filesystem.rename(&backup, destination)
+        {
+            let failure = Error::io(io::Error::new(
+                error.kind(),
+                format!(
+                    "could not replace file {}: {error}; rollback also failed: {rollback}; previous file preserved at {}",
+                    destination.display(),
+                    backup.display()
+                ),
+            ));
+            return Err(with_file_cleanup(
+                failure,
+                filesystem.remove_file(&staging),
+                &staging,
+            ));
         }
-        let _ = fs::remove_file(&staging);
-        return Err(destination_error(
-            error,
-            destination,
-            "could not replace the file",
+        return Err(with_file_cleanup(
+            destination_error(error, destination, "could not replace the file"),
+            filesystem.remove_file(&staging),
+            &staging,
         ));
     }
-    let cleanup_warning = if backup.exists() {
-        fs::remove_file(&backup).err().map(|error| {
-            format!(
-                "replacement succeeded, but old backup {} could not be removed: {error}",
-                backup.display()
-            )
-        })
+    let mut warnings = Vec::new();
+    if let Err(error) = filesystem.sync_dir(parent) {
+        warnings.push(format!(
+            "replacement succeeded, but directory metadata for {} could not be flushed: {error}",
+            parent.display()
+        ));
+    }
+    let backup_removed = if backup.exists() {
+        match filesystem.remove_file(&backup) {
+            Ok(()) => true,
+            Err(error) => {
+                warnings.push(format!(
+                    "replacement succeeded, but old backup {} could not be removed: {error}",
+                    backup.display()
+                ));
+                false
+            }
+        }
     } else {
-        None
+        false
     };
+    if backup_removed && let Err(error) = filesystem.sync_dir(parent) {
+        warnings.push(format!(
+            "replacement succeeded, but cleanup metadata for {} could not be flushed: {error}",
+            parent.display()
+        ));
+    }
+    let cleanup_warning = (!warnings.is_empty()).then(|| warnings.join("; "));
     Ok(AtomicReplaceResult { cleanup_warning })
+}
+
+/// Preserves the primary failure while reporting an unsuccessful staging cleanup.
+fn with_file_cleanup(primary: Error, cleanup: io::Result<()>, staging: &Path) -> Error {
+    match cleanup {
+        Ok(()) => primary,
+        Err(cleanup) if cleanup.kind() == io::ErrorKind::NotFound => primary,
+        Err(cleanup) => Error::io(io::Error::new(
+            cleanup.kind(),
+            format!(
+                "{primary}; staging file {} also could not be removed: {cleanup}",
+                staging.display()
+            ),
+        )),
+    }
 }
 
 /// Copies a directory into a sibling staging path and atomically replaces its destination.
@@ -423,6 +505,8 @@ mod tests {
         renames: RefCell<VecDeque<RenameAction>>,
         fail_permissions: Cell<bool>,
         fail_removal: Cell<bool>,
+        fail_write: Cell<bool>,
+        fail_sync: Cell<bool>,
     }
 
     impl FaultFs {
@@ -431,6 +515,8 @@ mod tests {
                 renames: RefCell::new(actions.into_iter().collect()),
                 fail_permissions: Cell::new(false),
                 fail_removal: Cell::new(false),
+                fail_write: Cell::new(false),
+                fail_sync: Cell::new(false),
             }
         }
     }
@@ -471,7 +557,11 @@ mod tests {
         }
 
         fn remove_file(&self, path: &Path) -> io::Result<()> {
-            fs::remove_file(path)
+            if self.fail_removal.get() {
+                Err(io::Error::from(io::ErrorKind::PermissionDenied))
+            } else {
+                fs::remove_file(path)
+            }
         }
 
         fn set_permissions(&self, path: &Path, permissions: fs::Permissions) -> io::Result<()> {
@@ -479,6 +569,22 @@ mod tests {
                 Err(io::Error::from(io::ErrorKind::PermissionDenied))
             } else {
                 fs::set_permissions(path, permissions)
+            }
+        }
+
+        fn write_synced(&self, path: &Path, contents: &[u8]) -> io::Result<()> {
+            if self.fail_write.get() {
+                Err(io::Error::from(io::ErrorKind::WriteZero))
+            } else {
+                RealFs.write_synced(path, contents)
+            }
+        }
+
+        fn sync_dir(&self, _path: &Path) -> io::Result<()> {
+            if self.fail_sync.get() {
+                Err(io::Error::from(io::ErrorKind::Other))
+            } else {
+                Ok(())
             }
         }
     }
@@ -671,6 +777,70 @@ mod tests {
         let blocked_parent = temporary.path().join("blocked");
         fs::write(&blocked_parent, "file").unwrap();
         assert!(atomic_write(&blocked_parent.join("config.toml"), b"data").is_err());
+    }
+
+    #[test]
+    fn atomic_file_writes_report_rollback_cleanup_and_durability_failures() {
+        let temporary = tempdir().unwrap();
+        let destination = temporary.path().join("config.toml");
+        fs::write(&destination, "old").unwrap();
+
+        let rollback_failure = FaultFs::with_renames([
+            RenameAction::Perform,
+            RenameAction::Fail(io::ErrorKind::PermissionDenied),
+            RenameAction::Fail(io::ErrorKind::Other),
+        ]);
+        let error = atomic_write_with(&rollback_failure, &destination, b"new")
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("rollback also failed"));
+
+        let backup = temporary
+            .path()
+            .read_dir()
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .find(|path| path.to_string_lossy().contains("-backup-"))
+            .unwrap();
+        fs::rename(backup, &destination).unwrap();
+
+        let cleanup_failure =
+            FaultFs::with_renames([RenameAction::Fail(io::ErrorKind::PermissionDenied)]);
+        cleanup_failure.fail_removal.set(true);
+        let error = atomic_write_with(&cleanup_failure, &destination, b"new")
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("staging file"));
+
+        cleanup_failure.fail_removal.set(false);
+        for entry in temporary.path().read_dir().unwrap() {
+            let path = entry.unwrap().path();
+            if path.to_string_lossy().contains("-staging-") {
+                fs::remove_file(path).unwrap();
+            }
+        }
+
+        let durability_failure =
+            FaultFs::with_renames([RenameAction::Perform, RenameAction::Perform]);
+        durability_failure.fail_removal.set(true);
+        durability_failure.fail_sync.set(true);
+        let warning = atomic_write_with(&durability_failure, &destination, b"new")
+            .unwrap()
+            .cleanup_warning
+            .unwrap();
+        assert!(warning.contains("directory metadata"));
+        assert!(warning.contains("old backup"));
+
+        let write_failure = FaultFs::with_renames([]);
+        write_failure.fail_write.set(true);
+        assert!(
+            atomic_write_with(
+                &write_failure,
+                &temporary.path().join("failed.toml"),
+                b"new"
+            )
+            .is_err()
+        );
     }
 
     #[test]
