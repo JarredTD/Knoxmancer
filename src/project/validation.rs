@@ -71,10 +71,11 @@ pub fn check(project: &Project, target: ValidationTarget) -> Result<ValidatedPro
     if !problems.is_empty() {
         return Err(Error::validation_diagnostics(problems));
     }
-    let result = metadata
-        .into_iter()
-        .next()
-        .ok_or_else(|| Error::validation("validation completed without mod metadata"))?;
+    let Some(result) = metadata.into_iter().next() else {
+        return Err(Error::validation(
+            "validation completed without mod metadata",
+        ));
+    };
     Ok(ValidatedProject {
         project,
         layout,

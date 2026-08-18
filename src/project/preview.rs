@@ -12,24 +12,38 @@ const DECODED_DATA_MAX_BYTES: u64 = 2_000_000;
 
 /// Generates an opaque RGBA PNG filled with Knoxmancer's scaffold color.
 pub(crate) fn generate(width: u32, height: u32) -> Result<Vec<u8>> {
-    let pixel_count = u64::from(width)
-        .checked_mul(u64::from(height))
-        .and_then(|count| usize::try_from(count).ok())
-        .ok_or_else(|| Error::project("preview dimensions exceed addressable memory"))?;
-    let byte_count = pixel_count
-        .checked_mul(4)
-        .ok_or_else(|| Error::project("preview pixel data exceeds addressable memory"))?;
+    let Some(pixel_count) = u64::from(width).checked_mul(u64::from(height)) else {
+        return Err(Error::project(
+            "preview dimensions exceed addressable memory",
+        ));
+    };
+    let Ok(pixel_count) = usize::try_from(pixel_count) else {
+        return Err(Error::project(
+            "preview dimensions exceed addressable memory",
+        ));
+    };
+    let Some(byte_count) = pixel_count.checked_mul(4) else {
+        return Err(Error::project(
+            "preview pixel data exceeds addressable memory",
+        ));
+    };
     let mut pixels = Vec::new();
-    pixels
-        .try_reserve_exact(byte_count)
-        .map_err(|error| Error::project(format!("could not allocate preview pixels: {error}")))?;
+    if let Err(error) = pixels.try_reserve_exact(byte_count) {
+        return Err(Error::project(format!(
+            "could not allocate preview pixels: {error}"
+        )));
+    }
     for _ in 0..pixel_count {
         pixels.extend_from_slice(&[44, 48, 46, 255]);
     }
     let mut png = Vec::new();
-    PngEncoder::new(&mut png)
-        .write_image(&pixels, width, height, ExtendedColorType::Rgba8)
-        .map_err(|error| Error::project(format!("could not encode preview PNG: {error}")))?;
+    if let Err(error) =
+        PngEncoder::new(&mut png).write_image(&pixels, width, height, ExtendedColorType::Rgba8)
+    {
+        return Err(Error::project(format!(
+            "could not encode preview PNG: {error}"
+        )));
+    }
     Ok(png)
 }
 

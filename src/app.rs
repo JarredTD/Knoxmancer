@@ -141,14 +141,16 @@ fn doctor(start: Option<&std::path::Path>, reporter: &Reporter) -> Result<()> {
         "User configuration: defaults"
     });
     reporter.path("project", "Project", &project.root);
-    let mods_root = resolved
-        .local
-        .parent()
-        .ok_or_else(|| Error::project("resolved local installation has no parent directory"))?;
-    let workshop_root = resolved
-        .workshop_staging
-        .parent()
-        .ok_or_else(|| Error::project("resolved Workshop staging has no parent directory"))?;
+    let Some(mods_root) = resolved.local.parent() else {
+        return Err(Error::project(
+            "resolved local installation has no parent directory",
+        ));
+    };
+    let Some(workshop_root) = resolved.workshop_staging.parent() else {
+        return Err(Error::project(
+            "resolved Workshop staging has no parent directory",
+        ));
+    };
     reporter.path("mods_root", "Mods root", mods_root);
     reporter.path("workshop_root", "Workshop root", workshop_root);
     report_checked(&validated, reporter);

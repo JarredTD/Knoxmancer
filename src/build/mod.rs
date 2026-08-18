@@ -43,9 +43,9 @@ pub fn build(validated: &ValidatedProject<'_>) -> Result<DevelopmentArtifact> {
     let metadata = &validated.metadata;
     let output = validated.layout.output_root()?;
     let destination = output.join("dev").join(&metadata.id);
-    let parent = destination
-        .parent()
-        .ok_or_else(|| Error::project("development output has no parent directory"))?;
+    let Some(parent) = destination.parent() else {
+        return Err(Error::project("development output has no parent directory"));
+    };
     let staging = staging_path(parent, &metadata.id);
 
     remove_tree_if_exists(&staging)?;

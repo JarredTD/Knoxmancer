@@ -21,9 +21,9 @@ pub(crate) fn package(validated: &ValidatedProject<'_>) -> Result<PackageResult>
     let metadata = &validated.metadata;
     let output = validated.layout.output_root()?;
     let destination = output.join("workshop").join(&metadata.id);
-    let parent = destination
-        .parent()
-        .ok_or_else(|| Error::project("Workshop output has no parent directory"))?;
+    let Some(parent) = destination.parent() else {
+        return Err(Error::project("Workshop output has no parent directory"));
+    };
     let staging = staging_path(parent, &metadata.id);
     remove_tree_if_exists(&staging)?;
     fs::create_dir_all(&staging).map_err(Error::io)?;
@@ -38,10 +38,9 @@ pub(crate) fn package(validated: &ValidatedProject<'_>) -> Result<PackageResult>
         }
         let public = validated.layout.public_root()?;
         copy_file(&public.join("preview.png"), &staging.join("preview.png"))?;
-        let workshop = validated
-            .workshop
-            .as_ref()
-            .ok_or_else(|| Error::validation("Workshop metadata was not validated"))?;
+        let Some(workshop) = validated.workshop.as_ref() else {
+            return Err(Error::validation("Workshop metadata was not validated"));
+        };
         fs::write(staging.join("workshop.txt"), render(project, workshop)?).map_err(Error::io)?;
         atomic_replace(&staging, &destination)
     })();
