@@ -194,7 +194,7 @@ fn atomic_write_with(
         && let Err(error) = filesystem.rename(destination, &backup)
     {
         return Err(with_file_cleanup(
-            destination_error(error, destination, "could not move the existing file"),
+            destination_error(&error, destination, "could not move the existing file"),
             filesystem.remove_file(&staging),
             &staging,
         ));
@@ -219,7 +219,7 @@ fn atomic_write_with(
             ));
         }
         return Err(with_file_cleanup(
-            destination_error(error, destination, "could not replace the file"),
+            destination_error(&error, destination, "could not replace the file"),
             filesystem.remove_file(&staging),
             &staging,
         ));
@@ -327,7 +327,7 @@ fn atomic_replace_with(
         && let Err(error) = filesystem.rename(destination, &backup)
     {
         return Err(destination_error(
-            error,
+            &error,
             destination,
             "could not move the existing directory",
         ));
@@ -355,7 +355,7 @@ fn atomic_replace_with(
             }
         }
         return Err(destination_error(
-            error,
+            &error,
             destination,
             "could not replace the directory",
         ));
@@ -392,7 +392,7 @@ fn atomic_replace_with(
 }
 
 /// Adds destination context and recovery guidance to a filesystem error.
-fn destination_error(error: std::io::Error, destination: &Path, action: &str) -> Error {
+fn destination_error(error: &std::io::Error, destination: &Path, action: &str) -> Error {
     let hint = if error.kind() == std::io::ErrorKind::PermissionDenied {
         " Project Zomboid or another program may be using these files; close it and try again."
     } else {
@@ -648,7 +648,7 @@ mod tests {
         );
 
         let denied = destination_error(
-            std::io::Error::from(std::io::ErrorKind::PermissionDenied),
+            &std::io::Error::from(std::io::ErrorKind::PermissionDenied),
             &destination,
             "could not replace the directory",
         );
