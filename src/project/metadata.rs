@@ -4,7 +4,6 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 
-use regex::Regex;
 use serde::Serialize;
 
 use crate::error::{Error, Result};
@@ -40,8 +39,7 @@ pub fn read(path: &Path, build: &str) -> Result<ModMetadata> {
         Ok(value.clone())
     };
     let version = required("modversion")?;
-    let semantic_version = Regex::new(r"^\d+\.\d+\.\d+$").expect("valid regex");
-    if !semantic_version.is_match(&version) {
+    if !is_semantic_version(&version) {
         return Err(Error::validation(format!(
             "{}: modversion `{version}` must use MAJOR.MINOR.PATCH",
             path.display()
@@ -70,6 +68,9 @@ fn parse_fields(source: &str, path: &Path) -> Result<BTreeMap<String, String>> {
     let mut fields = BTreeMap::new();
     for (key, value) in source.lines().filter_map(|line| line.split_once('=')) {
         let key = key.trim().to_owned();
+        if !matches!(key.as_str(), "name" | "id" | "modversion") {
+            continue;
+        }
         if fields
             .insert(key.clone(), value.trim().to_owned())
             .is_some()
@@ -81,6 +82,16 @@ fn parse_fields(source: &str, path: &Path) -> Result<BTreeMap<String, String>> {
         }
     }
     Ok(fields)
+}
+
+/// Returns whether a version contains exactly three non-empty numeric components.
+fn is_semantic_version(version: &str) -> bool {
+    let mut components = version.split('.');
+    (0..3).all(|_| {
+        components.next().is_some_and(|component| {
+            !component.is_empty() && component.bytes().all(|byte| byte.is_ascii_digit())
+        })
+    }) && components.next().is_none()
 }
 
 #[cfg(test)]
@@ -96,6 +107,13 @@ mod tests {
         let metadata = read(&path, "42").unwrap();
         assert_eq!(metadata.id, "Example");
         assert_eq!(metadata.version, "1.2.3");
+
+        fs::write(
+            &path,
+            "name=Example\nid=Example\nmodversion=1.2.3\nposter=a.png\nposter=b.png\n",
+        )
+        .unwrap();
+        assert!(read(&path, "42").is_ok());
     }
 
     #[test]

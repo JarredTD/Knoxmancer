@@ -1,5 +1,6 @@
 //! Typed Steam Workshop metadata parsing and rendering.
 
+use std::collections::BTreeSet;
 use std::fmt;
 use std::fs;
 use std::path::Path;
@@ -10,6 +11,10 @@ use super::Diagnostic;
 const DESCRIPTION_MARKER: &str = "{{DESCRIPTION}}";
 /// Workshop fields supported by Knoxmancer.
 const FIELDS: [&str; 5] = ["version", "id", "title", "tags", "visibility"];
+/// Maximum Workshop title length accepted by Steam, excluding its null terminator.
+const TITLE_MAX_BYTES: usize = 128;
+/// Maximum length accepted by Steam for one Workshop tag.
+const TAG_MAX_BYTES: usize = 255;
 
 /// Validated metadata used to render a canonical `workshop.txt`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -117,15 +122,28 @@ pub(super) fn parse(path: &Path) -> Result<WorkshopMetadata, Vec<Diagnostic>> {
             Some,
         )
     });
-    let title = nonempty(&entries, "title", path, &mut diagnostics).map(str::to_owned);
-    let tags = nonempty(&entries, "tags", path, &mut diagnostics).map(|value| {
-        value
-            .split(';')
-            .map(str::trim)
-            .filter(|tag| !tag.is_empty())
-            .map(str::to_owned)
-            .collect::<Vec<_>>()
+    let title = nonempty(&entries, "title", path, &mut diagnostics).and_then(|value| {
+        let value = value.trim();
+        if value.len() > TITLE_MAX_BYTES {
+            diagnostics.push(Diagnostic::at(
+                "workshop.title.too_long",
+                path,
+                format!("title must not exceed {TITLE_MAX_BYTES} UTF-8 bytes"),
+            ));
+            None
+        } else if value.chars().any(char::is_control) {
+            diagnostics.push(Diagnostic::at(
+                "workshop.title.invalid",
+                path,
+                "title must not contain control characters",
+            ));
+            None
+        } else {
+            Some(value.to_owned())
+        }
     });
+    let tags = nonempty(&entries, "tags", path, &mut diagnostics)
+        .and_then(|value| parse_tags(value, path, &mut diagnostics));
     let visibility =
         one(&entries, "visibility", path, &mut diagnostics).and_then(|value| match value {
             "public" => Some(WorkshopVisibility::Public),
@@ -158,6 +176,52 @@ pub(super) fn parse(path: &Path) -> Result<WorkshopMetadata, Vec<Diagnostic>> {
         }),
         _ => Err(diagnostics),
     }
+}
+
+/// Parses, normalizes, and validates the semicolon-delimited Workshop tag list.
+fn parse_tags(value: &str, path: &Path, diagnostics: &mut Vec<Diagnostic>) -> Option<Vec<String>> {
+    let mut tags = Vec::new();
+    let mut seen = BTreeSet::new();
+    for candidate in value.split(';') {
+        let tag = candidate.trim();
+        if tag.is_empty() {
+            diagnostics.push(Diagnostic::at(
+                "workshop.tag.empty",
+                path,
+                "tags must not contain empty entries",
+            ));
+            continue;
+        }
+        if tag.len() > TAG_MAX_BYTES {
+            diagnostics.push(Diagnostic::at(
+                "workshop.tag.too_long",
+                path,
+                format!("tag must not exceed {TAG_MAX_BYTES} UTF-8 bytes: {tag}"),
+            ));
+            continue;
+        }
+        if tag
+            .chars()
+            .any(|character| character.is_control() || character == ',')
+        {
+            diagnostics.push(Diagnostic::at(
+                "workshop.tag.invalid",
+                path,
+                format!("tag contains unsupported characters: {tag}"),
+            ));
+            continue;
+        }
+        if !seen.insert(tag.to_ascii_lowercase()) {
+            diagnostics.push(Diagnostic::at(
+                "workshop.tag.duplicate",
+                path,
+                format!("duplicate tag: {tag}"),
+            ));
+            continue;
+        }
+        tags.push(tag.to_owned());
+    }
+    (!tags.is_empty()).then_some(tags)
 }
 
 /// Returns one value for a required field and diagnoses missing or duplicate entries.
@@ -260,5 +324,60 @@ mod tests {
                 "missing {code}"
             );
         }
+    }
+
+    #[test]
+    fn reports_unreadable_metadata_and_formats_all_visibilities() {
+        let temporary = tempdir().unwrap();
+        let diagnostics = parse(temporary.path()).unwrap_err();
+        assert_eq!(diagnostics[0].code, "workshop.unreadable");
+        assert_eq!(WorkshopVisibility::FriendsOnly.to_string(), "friendsOnly");
+        assert_eq!(WorkshopVisibility::Private.to_string(), "private");
+    }
+
+    #[test]
+    fn normalizes_tags_and_rejects_invalid_workshop_text() {
+        let temporary = tempdir().unwrap();
+        let path = temporary.path().join("workshop.txt");
+        fs::write(
+            &path,
+            "version=1\nid=0\ntitle=  Example  \n{{DESCRIPTION}}\ntags= Build 42 ; Multiplayer \nvisibility=private\n",
+        )
+        .unwrap();
+        let metadata = parse(&path).unwrap();
+        assert_eq!(metadata.title, "Example");
+        assert_eq!(metadata.tags, ["Build 42", "Multiplayer"]);
+
+        fs::write(
+            &path,
+            format!(
+                "version=1\nid=0\ntitle={}\n{{{{DESCRIPTION}}}}\ntags=Build 42;build 42;;bad,tag;{}\nvisibility=private\n",
+                "x".repeat(TITLE_MAX_BYTES + 1),
+                "x".repeat(TAG_MAX_BYTES + 1),
+            ),
+        )
+        .unwrap();
+        let diagnostics = parse(&path).unwrap_err();
+        for code in [
+            "workshop.title.too_long",
+            "workshop.tag.duplicate",
+            "workshop.tag.empty",
+            "workshop.tag.invalid",
+            "workshop.tag.too_long",
+        ] {
+            assert!(diagnostics.iter().any(|problem| problem.code == code));
+        }
+
+        fs::write(
+            &path,
+            "version=1\nid=0\ntitle=bad\ttitle\n{{DESCRIPTION}}\ntags=Build 42\nvisibility=private\n",
+        )
+        .unwrap();
+        assert!(
+            parse(&path)
+                .unwrap_err()
+                .iter()
+                .any(|problem| problem.code == "workshop.title.invalid")
+        );
     }
 }
