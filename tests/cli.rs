@@ -220,6 +220,8 @@ fn manages_machine_specific_user_defaults() {
     let temporary = tempdir().unwrap();
     let config = temporary.path().join("settings/config.toml");
     let mods = temporary.path().join("mods");
+    let workshop = temporary.path().join("workshop");
+    let project = temporary.path().join("managed-mod");
 
     assert!(
         km_with_config(&["config", "show"], &config)
@@ -236,10 +238,42 @@ fn manages_machine_specific_user_defaults() {
             .status
             .success()
     );
+    assert!(
+        km_with_config(
+            &["config", "set", "workshop-root", path(&workshop)],
+            &config,
+        )
+        .status
+        .success()
+    );
     let shown = km_with_config(&["config", "show"], &config);
     let shown = String::from_utf8(shown.stdout).unwrap();
     assert!(shown.contains("Test Author"));
     assert!(shown.contains(&mods.display().to_string()));
+    assert!(shown.contains(&workshop.display().to_string()));
+
+    assert!(
+        km_with_config(&["new", path(&project)], &config)
+            .status
+            .success()
+    );
+    assert!(
+        fs::read_to_string(project.join("src/mod.info"))
+            .unwrap()
+            .contains("author=Test Author")
+    );
+    assert!(
+        km_with_config(&["--project", path(&project), "install"], &config)
+            .status
+            .success()
+    );
+    assert!(mods.join("ManagedMod/42/mod.info").is_file());
+    assert!(
+        km_with_config(&["--project", path(&project), "stage"], &config)
+            .status
+            .success()
+    );
+    assert!(workshop.join("ManagedMod/workshop.txt").is_file());
 
     assert!(
         km_with_config(&["config", "unset", "author"], &config)

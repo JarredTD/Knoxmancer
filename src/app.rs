@@ -13,7 +13,10 @@ use crate::system::user_config::{self, UserConfig};
 pub(crate) fn run(cli: Cli, reporter: &Reporter) -> Result<()> {
     let project_start = cli.project;
     match cli.command {
-        Command::New(args) => new_project(args, reporter),
+        Command::New(args) => {
+            let config = user_config::load()?.values;
+            new_project(args, &config, reporter)
+        }
         Command::Init(args) => {
             let root = scaffold::init_project(project_start.as_deref(), args.force)?;
             reporter.status(&format!("Initialized {}", root.display()));
@@ -21,7 +24,8 @@ pub(crate) fn run(cli: Cli, reporter: &Reporter) -> Result<()> {
         }
         Command::Paths(_) => {
             let project = discover(project_start.as_deref())?;
-            paths(&project, reporter)?;
+            let config = user_config::load()?.values;
+            paths(&project, &config, reporter)?;
             Ok(())
         }
         Command::Check(args) => {
@@ -42,7 +46,9 @@ pub(crate) fn run(cli: Cli, reporter: &Reporter) -> Result<()> {
         Command::Install(args) => {
             let project = discover(project_start.as_deref())?;
             let built = build(&project, reporter)?;
-            let installed = build::install(&built, args.root.as_deref())?;
+            let config = user_config::load()?.values;
+            let root = args.root.as_deref().or(config.mods_root.as_deref());
+            let installed = build::install(&built, root)?;
             report_warnings(&installed.warnings, reporter);
             reporter.status(&format!(
                 "Installed for local play: {}",
@@ -69,7 +75,9 @@ pub(crate) fn run(cli: Cli, reporter: &Reporter) -> Result<()> {
             report_checked(&validated, reporter);
             let packaged = crate::workshop::package(&validated)?;
             report_warnings(&packaged.warnings, reporter);
-            let staged = crate::workshop::stage(&packaged, args.root.as_deref())?;
+            let config = user_config::load()?.values;
+            let root = args.root.as_deref().or(config.workshop_root.as_deref());
+            let staged = crate::workshop::stage(&packaged, root)?;
             report_warnings(&staged.warnings, reporter);
             reporter.status(&format!(
                 "Staged for Workshop upload: {}",
@@ -152,12 +160,12 @@ fn discover(start: Option<&std::path::Path>) -> Result<Project> {
 }
 
 /// Creates a scaffold from parsed command-line arguments.
-fn new_project(args: NewArgs, reporter: &Reporter) -> Result<()> {
+fn new_project(args: NewArgs, config: &UserConfig, reporter: &Reporter) -> Result<()> {
     let result = scaffold::new_project(&NewProjectOptions {
         directory: args.directory,
         name: args.name,
         id: args.id,
-        author: args.author,
+        author: args.author.or_else(|| config.author.clone()),
     })?;
     reporter.status(&format!(
         "Created {} (Build 42) at {}",
@@ -169,12 +177,15 @@ fn new_project(args: NewArgs, reporter: &Reporter) -> Result<()> {
 }
 
 /// Reports every generated and game-facing directory for a project.
-fn paths(project: &Project, reporter: &Reporter) -> Result<()> {
+fn paths(project: &Project, config: &UserConfig, reporter: &Reporter) -> Result<()> {
     let validated = validation::check(project, ValidationTarget::Playable)?;
     let output = validated.layout.output_root()?;
     let mod_id = &validated.metadata.id;
-    let local = crate::system::environment::zomboid_root(None, "mods")?.join(mod_id);
-    let staging = crate::system::environment::zomboid_root(None, "Workshop")?.join(mod_id);
+    let local =
+        crate::system::environment::zomboid_root(config.mods_root.as_deref(), "mods")?.join(mod_id);
+    let staging =
+        crate::system::environment::zomboid_root(config.workshop_root.as_deref(), "Workshop")?
+            .join(mod_id);
     for (name, label, path) in [
         (
             "development_artifact",

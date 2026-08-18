@@ -30,6 +30,7 @@ This installs `knoxmancer` and its `km` alias.
 | `km package` | Build a Workshop project under `dist/workshop` |
 | `km stage` | Package and copy under `~/Zomboid/Workshop` for uploading |
 | `km clean` | Remove generated artifacts |
+| `km config show/set/unset` | Manage machine-specific defaults |
 
 Use `km install` while developing and testing in the game. Use `km stage` when
 the mod is ready for **Workshop > Create and update items**. `km package` only
@@ -80,6 +81,21 @@ and installs do not require Workshop files.
 
 `km stage --root <path>` overrides the Workshop projects directory.
 `km install --root <path>` similarly overrides the local mods directory.
+
+## User defaults
+
+Machine-specific defaults are stored outside project manifests. Roots must be
+absolute paths; explicit command options continue to take precedence.
+
+```sh
+km config set author "Your Name"
+km config set mods-root "C:\Users\you\Zomboid\mods"
+km config set workshop-root "C:\Users\you\Zomboid\Workshop"
+km config show
+km config unset author
+```
+
+`KNOXMANCER_CONFIG` may point to an alternate absolute configuration file.
 
 ## Output contract
 
