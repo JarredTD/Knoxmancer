@@ -44,3 +44,18 @@ impl Reporter {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn quiet_output_still_reports_warnings() {
+        let reporter = Reporter::new(OutputOptions {
+            quiet: true,
+            color: ColorChoice::Never,
+        });
+        reporter.status("hidden status");
+        reporter.warning("visible warning");
+    }
+}

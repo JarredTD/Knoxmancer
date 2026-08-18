@@ -240,6 +240,12 @@ fn preserves_sources_and_replaces_existing_artifacts() {
             .status
             .success()
     );
+    fs::write(project.join("LICENSE"), "Example license\n").unwrap();
+    let manifest = project.join("knoxmancer.toml");
+    let configured = fs::read_to_string(&manifest)
+        .unwrap()
+        .replace("include = []", "include = [\"CHANGELOG.md\", \"LICENSE\"]");
+    fs::write(&manifest, configured).unwrap();
     let lua = project.join("src/client/example.lua");
     fs::write(&lua, "return true\n").unwrap();
     fs::write(project.join("src/shared/example.lua"), "return 'shared'\n").unwrap();
@@ -276,6 +282,16 @@ fn preserves_sources_and_replaces_existing_artifacts() {
         ),)
         .unwrap(),
         "return true\n"
+    );
+    assert!(
+        project
+            .join("dist/workshop/ReleaseMod/CHANGELOG.md")
+            .is_file()
+    );
+    assert!(
+        project
+            .join("dist/workshop/ReleaseMod/Contents/mods/ReleaseMod/LICENSE")
+            .is_file()
     );
     for _ in 0..2 {
         assert!(
