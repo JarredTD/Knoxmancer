@@ -58,7 +58,7 @@ impl Error {
     }
 
     /// Creates a validation error containing machine-readable diagnostics.
-    pub fn validation_diagnostics(diagnostics: Vec<Diagnostic>) -> Self {
+    pub fn validation_diagnostics(diagnostics: &[Diagnostic]) -> Self {
         let message = diagnostics
             .iter()
             .map(ToString::to_string)

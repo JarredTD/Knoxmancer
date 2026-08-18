@@ -8,10 +8,9 @@ pub(super) fn display_name(slug: &str) -> String {
         .filter(|part| !part.is_empty())
         .map(|part| {
             let mut characters = part.chars();
-            match characters.next() {
-                Some(first) => first.to_uppercase().collect::<String>() + characters.as_str(),
-                None => String::new(),
-            }
+            characters.next().map_or_else(String::new, |first| {
+                first.to_uppercase().collect::<String>() + characters.as_str()
+            })
         })
         .collect::<Vec<_>>()
         .join(" ")

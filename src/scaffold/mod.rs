@@ -98,7 +98,7 @@ fn rollback_scaffold(root: &Path, created_root: bool) -> io::Result<()> {
 
 /// Writes a manifest for an existing source-oriented Build 42 project.
 pub fn init_project(explicit_root: Option<&Path>, force: bool) -> Result<PathBuf> {
-    let root = absolute(explicit_root.unwrap_or(Path::new(".")))?;
+    let root = absolute(explicit_root.unwrap_or_else(|| Path::new(".")))?;
     let manifest = root.join(MANIFEST_NAME);
     if manifest.exists() && !force {
         return Err(Error::project(format!(
@@ -112,8 +112,7 @@ pub fn init_project(explicit_root: Option<&Path>, force: bool) -> Result<PathBuf
     }
 
     let mut config = Config::default();
-    config.package.include = ["LICENSE"]
-        .into_iter()
+    config.package.include = std::iter::once("LICENSE")
         .map(PathBuf::from)
         .filter(|path| root.join(path).is_file())
         .collect();

@@ -48,7 +48,7 @@ impl<'a> ProjectLayout<'a> {
     /// Returns the confined source root.
     pub fn source_root(self) -> Result<PathBuf> {
         self.confined(
-            Self::relative(&self.project.config.paths.source, "paths.source", true)?,
+            &Self::relative(&self.project.config.paths.source, "paths.source", true)?,
             "paths.source",
         )
     }
@@ -56,7 +56,7 @@ impl<'a> ProjectLayout<'a> {
     /// Returns the confined public-assets root.
     pub fn public_root(self) -> Result<PathBuf> {
         self.confined(
-            Self::relative(&self.project.config.paths.public, "paths.public", false)?,
+            &Self::relative(&self.project.config.paths.public, "paths.public", false)?,
             "paths.public",
         )
     }
@@ -64,7 +64,7 @@ impl<'a> ProjectLayout<'a> {
     /// Returns the confined generated-output root.
     pub fn output_root(self) -> Result<PathBuf> {
         self.confined(
-            Self::relative(&self.project.config.paths.output, "paths.output", false)?,
+            &Self::relative(&self.project.config.paths.output, "paths.output", false)?,
             "paths.output",
         )
     }
@@ -72,13 +72,13 @@ impl<'a> ProjectLayout<'a> {
     /// Resolves a package include and returns its normalized relative path and source path.
     pub fn included(self, configured: &Path) -> Result<(PathBuf, PathBuf)> {
         let relative = Self::relative(configured, "package.include", false)?;
-        let source = self.confined(relative.clone(), "package.include")?;
+        let source = self.confined(&relative, "package.include")?;
         Ok((relative, source))
     }
 
     /// Resolves a relative path and verifies its existing ancestor remains in the project.
-    fn confined(self, relative: PathBuf, name: &str) -> Result<PathBuf> {
-        let path = self.project.root.join(&relative);
+    fn confined(self, relative: &Path, name: &str) -> Result<PathBuf> {
+        let path = self.project.root.join(relative);
         let canonical_root = fs::canonicalize(&self.project.root).map_err(Error::io)?;
         let mut existing = path.as_path();
         while !existing.exists() {

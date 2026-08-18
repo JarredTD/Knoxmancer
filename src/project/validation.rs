@@ -45,18 +45,18 @@ pub fn check(project: &Project, target: ValidationTarget) -> Result<ValidatedPro
     let source_root = layout.source_root()?;
     let mut metadata = Vec::new();
     let build = &project.config.project.build;
-    if build != "42" {
-        problems.push(Diagnostic::at(
-            "project.build.unsupported",
-            project.root.join("knoxmancer.toml"),
-            format!("unsupported Project Zomboid build: {build}"),
-        ));
-    } else {
+    if build == "42" {
         let path = source_root.join("mod.info");
         match read_metadata(&path, build) {
             Ok(value) => metadata.push(value),
             Err(error) => problems.push(Diagnostic::new("metadata.invalid", error.to_string())),
         }
+    } else {
+        problems.push(Diagnostic::at(
+            "project.build.unsupported",
+            project.root.join("knoxmancer.toml"),
+            format!("unsupported Project Zomboid build: {build}"),
+        ));
     }
 
     validate_source_layout(&source_root, &mut problems);
@@ -69,7 +69,7 @@ pub fn check(project: &Project, target: ValidationTarget) -> Result<ValidatedPro
     };
 
     if !problems.is_empty() {
-        return Err(Error::validation_diagnostics(problems));
+        return Err(Error::validation_diagnostics(&problems));
     }
     let Some(result) = metadata.into_iter().next() else {
         return Err(Error::validation(
@@ -270,7 +270,11 @@ mod tests {
                 .any(|problem| problem.to_string().contains("128x256"))
         );
 
-        fs::write(&preview, vec![0; PREVIEW_MAX_BYTES as usize]).unwrap();
+        fs::write(
+            &preview,
+            vec![0; usize::try_from(PREVIEW_MAX_BYTES).unwrap()],
+        )
+        .unwrap();
         validate_public(&value, ProjectLayout::new(&value).unwrap(), &mut problems).unwrap();
         assert!(
             problems
