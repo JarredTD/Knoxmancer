@@ -9,17 +9,32 @@ use crate::error::{Error, Result};
 
 /// Filename used to identify a Knoxmancer project root.
 pub const MANIFEST_NAME: &str = "knoxmancer.toml";
+/// Manifest format understood by this Knoxmancer release.
+pub const MANIFEST_VERSION: u32 = 1;
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default, deny_unknown_fields)]
 /// Complete deserialized project manifest.
 pub struct Config {
+    /// Knoxmancer manifest format version.
+    pub manifest_version: u32,
     /// Supported Project Zomboid builds.
     pub project: ProjectConfig,
     /// Project-relative source, public, and output directories.
     pub paths: PathsConfig,
-    /// Publishing artifact policy.
-    pub release: ReleaseConfig,
+    /// Files added to the downloadable mod package.
+    pub package: PackageConfig,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            manifest_version: MANIFEST_VERSION,
+            project: ProjectConfig::default(),
+            paths: PathsConfig::default(),
+            package: PackageConfig::default(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -62,9 +77,9 @@ impl Default for PathsConfig {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default, deny_unknown_fields)]
-/// Files added to publishing artifacts.
-pub struct ReleaseConfig {
-    /// Project-relative files copied into release outputs.
+/// Files added to downloadable mod packages.
+pub struct PackageConfig {
+    /// Project-relative files copied into the downloadable mod root.
     pub include: Vec<PathBuf>,
 }
 
@@ -106,8 +121,14 @@ impl Project {
     pub fn load(root: &Path) -> Result<Self> {
         let manifest = root.join(MANIFEST_NAME);
         let source = fs::read_to_string(&manifest).map_err(Error::io)?;
-        let config = toml::from_str(&source)
+        let config: Config = toml::from_str(&source)
             .map_err(|error| Error::project(format!("invalid {}: {error}", manifest.display())))?;
+        if config.manifest_version != MANIFEST_VERSION {
+            return Err(Error::project(format!(
+                "unsupported manifest version {}; expected {MANIFEST_VERSION}",
+                config.manifest_version
+            )));
+        }
         Ok(Self {
             root: root.to_path_buf(),
             config,
@@ -123,6 +144,7 @@ mod tests {
     #[test]
     fn defaults_are_build_42_and_conventional_paths() {
         let config: Config = toml::from_str("").unwrap();
+        assert_eq!(config.manifest_version, MANIFEST_VERSION);
         assert_eq!(config.project.builds, ["42"]);
         assert_eq!(config.paths.source, PathBuf::from("src"));
         assert_eq!(config.paths.output, PathBuf::from("dist"));
@@ -144,6 +166,9 @@ mod tests {
         assert!(Project::load(root).is_err());
 
         fs::write(root.join(MANIFEST_NAME), "[test]\ncommand = 'cargo test'\n").unwrap();
+        assert!(Project::load(root).is_err());
+
+        fs::write(root.join(MANIFEST_NAME), "manifest_version = 2\n").unwrap();
         assert!(Project::load(root).is_err());
     }
 }

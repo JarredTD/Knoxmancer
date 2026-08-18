@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use super::config::Project;
 use super::diagnostic::Diagnostic;
@@ -90,7 +90,7 @@ pub fn check(project: &Project, target: ValidationTarget) -> Result<ValidatedPro
     validate_source_layout(&source_root, &mut problems);
     if target == ValidationTarget::Workshop {
         validate_public(project, &mut problems);
-        validate_release(project, &mut problems);
+        validate_package(project, &mut problems);
     }
 
     if !problems.is_empty() {
@@ -129,7 +129,7 @@ fn validate_public(project: &Project, problems: &mut Vec<Diagnostic>) {
         if !path.is_file() {
             problems.push(Diagnostic::at(
                 "public.file.missing",
-                path,
+                &path,
                 "required file is missing",
             ));
         }
@@ -168,47 +168,48 @@ fn validate_public(project: &Project, problems: &mut Vec<Diagnostic>) {
     }
 }
 
-/// Validates release includes and their final Workshop destinations.
-fn validate_release(project: &Project, problems: &mut Vec<Diagnostic>) {
-    let mut destinations = BTreeMap::from([
-        (
-            "root/preview.png".to_owned(),
-            PathBuf::from("public/preview.png"),
-        ),
-        (
-            "root/workshop.txt".to_owned(),
-            PathBuf::from("public/workshop.txt"),
-        ),
-    ]);
-    for included in &project.config.release.include {
+/// Validates package includes and their final mod-relative destinations.
+fn validate_package(project: &Project, problems: &mut Vec<Diagnostic>) {
+    let mut destinations = BTreeMap::new();
+    for included in &project.config.package.include {
         let path = ProjectLayout::new(project)
             .and_then(|layout| layout.included(included))
             .map(|(_, source)| source)
-            .expect("project layout was validated before release inputs");
+            .expect("project layout was validated before package inputs");
         if !path.is_file() {
             problems.push(Diagnostic::at(
-                "release.include.missing",
+                "package.include.missing",
                 &path,
-                "release file is missing",
+                "package file is missing",
             ));
         }
-        let Some(file_name) = included.file_name() else {
-            continue;
-        };
-        let file_name = file_name.to_string_lossy();
-        let destination = if file_name == "LICENSE" {
-            "mod/license".to_owned()
-        } else {
-            format!("root/{}", file_name.to_ascii_lowercase())
-        };
+        let destination = included
+            .to_string_lossy()
+            .replace('\\', "/")
+            .to_ascii_lowercase();
         if let Some(previous) = destinations.insert(destination, included.clone()) {
             problems.push(Diagnostic::at(
-                "release.include.collision",
-                path,
+                "package.include.collision",
+                &path,
                 format!(
-                    "release include {} conflicts with {} in the Workshop package",
+                    "package include {} conflicts with {}",
                     included.display(),
                     previous.display()
+                ),
+            ));
+        }
+        if project.config.project.builds.iter().any(|build| {
+            included
+                .components()
+                .next()
+                .is_some_and(|component| component.as_os_str() == std::ffi::OsStr::new(build))
+        }) {
+            problems.push(Diagnostic::at(
+                "package.include.build_collision",
+                path,
+                format!(
+                    "package include {} overlaps generated build content",
+                    included.display()
                 ),
             ));
         }
@@ -270,7 +271,7 @@ mod tests {
     }
 
     #[test]
-    fn validates_preview_and_release_failure_modes() {
+    fn validates_preview_and_package_failure_modes() {
         let temporary = tempdir().unwrap();
         let mut value = valid_project(temporary.path());
         let preview = temporary.path().join("public/preview.png");
@@ -291,25 +292,37 @@ mod tests {
                 .any(|problem| problem.to_string().contains("under 1000 KB"))
         );
 
-        value.config.release.include.push(PathBuf::from("MISSING"));
-        validate_release(&value, &mut problems);
+        value.config.package.include.push(PathBuf::from("MISSING"));
+        validate_package(&value, &mut problems);
         assert!(
             problems
                 .iter()
-                .any(|problem| problem.to_string().contains("release file is missing"))
+                .any(|problem| problem.to_string().contains("package file is missing"))
         );
 
-        fs::write(temporary.path().join("preview.png"), "collision").unwrap();
+        fs::write(temporary.path().join("NOTICE"), "notice").unwrap();
         value
             .config
-            .release
+            .package
             .include
-            .push(PathBuf::from("preview.png"));
-        validate_release(&value, &mut problems);
+            .extend([PathBuf::from("NOTICE"), PathBuf::from("NOTICE")]);
+        fs::create_dir(temporary.path().join("42")).unwrap();
+        fs::write(temporary.path().join("42/extra.txt"), "collision").unwrap();
+        value
+            .config
+            .package
+            .include
+            .push(PathBuf::from("42/extra.txt"));
+        validate_package(&value, &mut problems);
         assert!(
             problems
                 .iter()
-                .any(|problem| problem.code == "release.include.collision")
+                .any(|problem| problem.code == "package.include.collision")
+        );
+        assert!(
+            problems
+                .iter()
+                .any(|problem| problem.code == "package.include.build_collision")
         );
     }
 

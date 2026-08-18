@@ -32,17 +32,10 @@ pub(crate) fn package(validated: &ValidatedProject<'_>) -> Result<PackageResult>
         let mod_root = staging.join("Contents/mods").join(&metadata.id);
         fs::create_dir_all(&mod_root).map_err(Error::io)?;
         assemble_mod(validated, &mod_root)?;
-        for included in &project.config.release.include {
+        for included in &project.config.package.include {
             let (relative, source) = validated.layout.included(included)?;
             if source.is_file() {
-                let file_name = relative.file_name().ok_or_else(|| {
-                    Error::project(format!("invalid included path: {}", relative.display()))
-                })?;
-                if file_name == "LICENSE" {
-                    copy_file(&source, &mod_root.join(file_name))?;
-                } else {
-                    copy_file(&source, &staging.join(file_name))?;
-                }
+                copy_file(&source, &mod_root.join(relative))?;
             }
         }
         let public = validated.layout.public_root()?;

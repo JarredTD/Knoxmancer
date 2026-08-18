@@ -39,7 +39,7 @@ impl<'a> ProjectLayout<'a> {
                 output.display()
             )));
         }
-        for included in &project.config.release.include {
+        for included in &project.config.package.include {
             layout.included(included)?;
         }
         Ok(layout)
@@ -69,10 +69,10 @@ impl<'a> ProjectLayout<'a> {
         )
     }
 
-    /// Resolves a release include and returns its normalized relative path and source path.
+    /// Resolves a package include and returns its normalized relative path and source path.
     pub fn included(self, configured: &Path) -> Result<(PathBuf, PathBuf)> {
-        let relative = Self::relative(configured, "release.include", false)?;
-        let source = self.confined(relative.clone(), "release.include")?;
+        let relative = Self::relative(configured, "package.include", false)?;
+        let source = self.confined(relative.clone(), "package.include")?;
         Ok((relative, source))
     }
 
@@ -163,7 +163,7 @@ mod tests {
         value.config.paths.output = PathBuf::from("src/generated");
         assert!(ProjectLayout::new(&value).is_err());
         value.config.paths.output = PathBuf::from("dist");
-        value.config.release.include = vec![PathBuf::from("../LICENSE")];
+        value.config.package.include = vec![PathBuf::from("../LICENSE")];
         assert!(ProjectLayout::new(&value).is_err());
     }
 

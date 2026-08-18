@@ -282,7 +282,7 @@ fn preserves_sources_and_replaces_existing_artifacts() {
     );
     assert!(
         project
-            .join("dist/workshop/ReleaseMod/CHANGELOG.md")
+            .join("dist/workshop/ReleaseMod/Contents/mods/ReleaseMod/CHANGELOG.md")
             .is_file()
     );
     assert!(

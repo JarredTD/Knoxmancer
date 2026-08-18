@@ -96,7 +96,7 @@ pub fn init_project(explicit_root: Option<&Path>, force: bool) -> Result<PathBuf
     }
 
     let mut config = Config::default();
-    config.release.include = ["CHANGELOG.md", "LICENSE"]
+    config.package.include = ["LICENSE"]
         .into_iter()
         .map(PathBuf::from)
         .filter(|path| root.join(path).is_file())
