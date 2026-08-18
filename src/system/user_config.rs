@@ -29,6 +29,8 @@ pub(crate) struct UserConfig {
 pub(crate) struct LoadedUserConfig {
     /// Platform-appropriate user configuration path.
     pub path: PathBuf,
+    /// Whether the configuration file currently exists.
+    pub exists: bool,
     /// Parsed machine-specific defaults.
     pub values: UserConfig,
 }
@@ -36,8 +38,13 @@ pub(crate) struct LoadedUserConfig {
 /// Loads user defaults from the platform-appropriate configuration file.
 pub(crate) fn load() -> Result<LoadedUserConfig> {
     let path = location()?;
+    let exists = path.is_file();
     let values = load_from(&path)?;
-    Ok(LoadedUserConfig { path, values })
+    Ok(LoadedUserConfig {
+        path,
+        exists,
+        values,
+    })
 }
 
 /// Persists user defaults and returns any non-fatal backup cleanup warning.

@@ -101,6 +101,8 @@ pub enum Command {
     Config(ConfigArgs),
     /// Generates a shell completion script.
     Completions(CompletionsArgs),
+    /// Checks project and environment readiness without writing artifacts.
+    Doctor(DoctorArgs),
 }
 
 #[derive(Debug, Args)]
@@ -238,3 +240,7 @@ impl From<CompletionShell> for clap_complete::Shell {
         }
     }
 }
+
+#[derive(Debug, Args, Default)]
+/// Arguments for read-only environment and project diagnostics.
+pub struct DoctorArgs {}

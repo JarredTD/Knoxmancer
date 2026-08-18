@@ -32,6 +32,7 @@ This installs `knoxmancer` and its `km` alias.
 | `km clean` | Remove generated artifacts |
 | `km config show/set/unset` | Manage machine-specific defaults |
 | `km completions <shell>` | Generate a shell completion script |
+| `km doctor` | Run read-only project and environment readiness checks |
 
 Use `km install` while developing and testing in the game. Use `km stage` when
 the mod is ready for **Workshop > Create and update items**. `km package` only
@@ -104,6 +105,9 @@ Completion scripts are written directly to standard output:
 km completions powershell > _km.ps1
 km completions bash > km.bash
 ```
+
+`km doctor` performs full local and Workshop validation without creating or
+replacing artifacts.
 
 ## Output contract
 

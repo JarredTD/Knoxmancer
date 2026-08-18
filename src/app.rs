@@ -105,7 +105,31 @@ pub(crate) fn run(cli: Cli, reporter: &Reporter) -> Result<()> {
         }
         Command::Config(args) => configure(args, reporter),
         Command::Completions(args) => completions(args.shell, quiet, format),
+        Command::Doctor(_) => doctor(project_start.as_deref(), reporter),
     }
+}
+
+/// Runs full read-only project and environment readiness checks.
+fn doctor(start: Option<&std::path::Path>, reporter: &Reporter) -> Result<()> {
+    let loaded = user_config::load()?;
+    let project = discover(start)?;
+    let validated = validation::check(&project, ValidationTarget::Workshop)?;
+    let resolved = resolved_paths(&validated, &loaded.values)?;
+    reporter.status(if loaded.exists {
+        "User configuration: loaded"
+    } else {
+        "User configuration: defaults"
+    });
+    reporter.path("project", "Project", &project.root);
+    reporter.path("mods_root", "Mods root", resolved.local.parent().unwrap());
+    reporter.path(
+        "workshop_root",
+        "Workshop root",
+        resolved.workshop_staging.parent().unwrap(),
+    );
+    report_checked(&validated, reporter);
+    reporter.status("Doctor: ready for local play and Workshop packaging.");
+    Ok(())
 }
 
 /// Emits a raw completion script for the requested shell.

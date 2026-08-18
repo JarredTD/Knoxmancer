@@ -219,6 +219,33 @@ fn generates_supported_shell_completions() {
 }
 
 #[test]
+fn doctor_reports_readiness_without_writing_artifacts() {
+    let temporary = tempdir().unwrap();
+    let config = temporary.path().join("config.toml");
+    let project = temporary.path().join("doctor-mod");
+    assert!(
+        km_with_config(&["new", path(&project)], &config)
+            .status
+            .success()
+    );
+
+    let doctor = km_with_config(&["--project", path(&project), "doctor"], &config);
+    assert!(doctor.status.success());
+    let doctor = String::from_utf8(doctor.stdout).unwrap();
+    assert!(doctor.contains("Doctor: ready"));
+    assert!(doctor.contains("Mods root:"));
+    assert!(doctor.contains("Workshop root:"));
+    assert!(!project.join("dist").exists());
+
+    fs::write(project.join("public/preview.png"), "invalid").unwrap();
+    assert!(
+        !km_with_config(&["--project", path(&project), "doctor"], &config)
+            .status
+            .success()
+    );
+}
+
+#[test]
 fn reports_resolved_project_paths() {
     let temporary = tempdir().unwrap();
     let project = temporary.path().join("paths-mod");
