@@ -18,10 +18,9 @@ pub(crate) fn run(cli: Cli, reporter: &Reporter) -> Result<()> {
             reporter.status(&format!("Initialized {}", root.display()));
             Ok(())
         }
-        Command::Doctor(_) => {
-            for line in crate::system::environment::doctor() {
-                reporter.status(&line);
-            }
+        Command::Paths(_) => {
+            let project = discover(project_start.as_deref())?;
+            paths(&project, reporter)?;
             Ok(())
         }
         Command::Check(_) => {
@@ -98,15 +97,31 @@ fn new_project(args: NewArgs, reporter: &Reporter) -> Result<()> {
         name: args.name,
         id: args.id,
         author: args.author,
-        build: args.build,
     })?;
     reporter.status(&format!(
-        "Created {} (Build {}) at {}",
+        "Created {} (Build 42) at {}",
         result.name,
-        result.build,
         result.root.display()
     ));
     reporter.status(&format!("Next: cd {} && km install", result.root.display()));
+    Ok(())
+}
+
+/// Reports every generated and game-facing directory for a project.
+fn paths(project: &Project, reporter: &Reporter) -> Result<()> {
+    let validated = validation::check(project, ValidationTarget::Playable)?;
+    let output = validated.layout.output_root()?;
+    let mod_id = &validated.metadata.id;
+    let local = crate::system::environment::zomboid_root(None, "mods")?.join(mod_id);
+    let staging = crate::system::environment::zomboid_root(None, "Workshop")?.join(mod_id);
+    for (label, path) in [
+        ("Development artifact", output.join("dev").join(mod_id)),
+        ("Local installation", local),
+        ("Workshop artifact", output.join("workshop").join(mod_id)),
+        ("Workshop staging", staging),
+    ] {
+        reporter.status(&format!("{label}: {}", path.display()));
+    }
     Ok(())
 }
 

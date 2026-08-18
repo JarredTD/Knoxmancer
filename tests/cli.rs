@@ -178,14 +178,21 @@ fn full_and_short_binaries_expose_the_same_version() {
 }
 
 #[test]
-fn diagnoses_the_environment_without_a_project() {
-    let output = km(&["doctor"]);
+fn reports_resolved_project_paths() {
+    let temporary = tempdir().unwrap();
+    let project = temporary.path().join("paths-mod");
+    assert!(km(&["new", path(&project)]).status.success());
+    let output = km(&["--project", path(&project), "paths"]);
     assert!(output.status.success());
     let stderr = String::from_utf8(output.stderr).unwrap();
-    assert!(stderr.contains("Knoxmancer environment"));
-    assert!(!stderr.contains("git:"));
-    assert!(stderr.contains("Local mods:"));
-    assert!(stderr.contains("Workshop projects:"));
+    for label in [
+        "Development artifact:",
+        "Local installation:",
+        "Workshop artifact:",
+        "Workshop staging:",
+    ] {
+        assert!(stderr.contains(label), "missing {label}");
+    }
 }
 
 #[test]

@@ -14,6 +14,8 @@ use naming::{display_name, mod_id, validate_id, validate_text};
 
 /// Initial semantic version assigned to newly scaffolded mods.
 const INITIAL_VERSION: &str = "0.1.0";
+/// Project Zomboid build supported by generated projects.
+const GAME_BUILD: &str = "42";
 /// Visible author placeholder used when no explicit author is supplied.
 const DEFAULT_AUTHOR: &str = "Your Name";
 
@@ -28,8 +30,6 @@ pub struct NewProjectOptions {
     pub id: Option<String>,
     /// Optional author override.
     pub author: Option<String>,
-    /// Project Zomboid build directory to generate.
-    pub build: String,
 }
 
 #[derive(Debug)]
@@ -39,8 +39,6 @@ pub struct NewProjectResult {
     pub root: PathBuf,
     /// Resolved human-readable mod name.
     pub name: String,
-    /// Generated Project Zomboid build directory.
-    pub build: String,
 }
 
 /// Creates a complete mod scaffold in an empty destination.
@@ -63,7 +61,7 @@ pub fn new_project(options: &NewProjectOptions) -> Result<NewProjectResult> {
     validate_text("author", &author)?;
 
     fs::create_dir_all(&root).map_err(Error::io)?;
-    if let Err(error) = write_scaffold(&root, &name, &id, &author, &options.build) {
+    if let Err(error) = write_scaffold(&root, &name, &id, &author) {
         if root
             .read_dir()
             .is_ok_and(|mut entries| entries.next().is_some())
@@ -73,11 +71,7 @@ pub fn new_project(options: &NewProjectOptions) -> Result<NewProjectResult> {
         return Err(error);
     }
 
-    Ok(NewProjectResult {
-        root,
-        name,
-        build: options.build.clone(),
-    })
+    Ok(NewProjectResult { root, name })
 }
 
 /// Writes a manifest for an existing source-oriented Build 42 project.
@@ -106,7 +100,7 @@ pub fn init_project(explicit_root: Option<&Path>, force: bool) -> Result<PathBuf
 }
 
 /// Writes directories, metadata, assets, and project files for a new scaffold.
-fn write_scaffold(root: &Path, name: &str, id: &str, author: &str, build: &str) -> Result<()> {
+fn write_scaffold(root: &Path, name: &str, id: &str, author: &str) -> Result<()> {
     let config = Config::default();
     write_manifest(root, &config)?;
 
@@ -120,7 +114,7 @@ fn write_scaffold(root: &Path, name: &str, id: &str, author: &str, build: &str) 
         ("id", id),
         ("version", INITIAL_VERSION),
         ("author", author),
-        ("build", build),
+        ("build", GAME_BUILD),
     ];
     fs::write(
         root.join("src/mod.info"),
@@ -197,10 +191,10 @@ mod tests {
     fn creates_complete_build_42_project() {
         let temporary = tempdir().unwrap();
         let root = temporary.path().join("example-mod");
-        write_scaffold(&root, "Example Mod", "ExampleMod", "Author", "42").unwrap_err();
+        write_scaffold(&root, "Example Mod", "ExampleMod", "Author").unwrap_err();
 
         fs::create_dir(&root).unwrap();
-        write_scaffold(&root, "Example Mod", "ExampleMod", "Author", "42").unwrap();
+        write_scaffold(&root, "Example Mod", "ExampleMod", "Author").unwrap();
         assert!(root.join("knoxmancer.toml").is_file());
         assert!(root.join("src/mod.info").is_file());
         assert!(!root.join("src/client").exists());
@@ -222,7 +216,6 @@ mod tests {
             name: None,
             id: None,
             author: None,
-            build: "42".to_owned(),
         };
         new_project(&args).unwrap();
         let metadata = fs::read_to_string(root.join("src/mod.info")).unwrap();

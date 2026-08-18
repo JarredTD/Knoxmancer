@@ -67,8 +67,8 @@ pub enum Command {
     New(NewArgs),
     /// Adopts an existing mod project without rewriting game metadata.
     Init(InitArgs),
-    /// Reports environment details and default Zomboid directories.
-    Doctor(DoctorArgs),
+    /// Reports resolved artifact, installation, and staging paths.
+    Paths(PathsArgs),
     /// Validates the project for local builds.
     Check(CheckArgs),
     /// Creates a playable artifact under the output directory.
@@ -97,9 +97,6 @@ pub struct NewArgs {
     #[arg(long)]
     /// Mod author; uses `Your Name` when omitted.
     pub author: Option<String>,
-    #[arg(long, default_value = "42", value_parser = ["42"])]
-    /// Project Zomboid build directory to scaffold.
-    pub build: String,
 }
 
 #[derive(Debug, Args)]
@@ -111,8 +108,8 @@ pub struct InitArgs {
 }
 
 #[derive(Debug, Args, Default)]
-/// Arguments for environment diagnostics.
-pub struct DoctorArgs {}
+/// Arguments for resolved project paths.
+pub struct PathsArgs {}
 
 #[derive(Debug, Args, Default)]
 /// Arguments for project validation.
