@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.1
 
 - Stage upload projects in the user Zomboid Workshop directory used by the game.
 - Clarify the local-play install and Workshop-project workflows.
