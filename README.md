@@ -23,6 +23,7 @@ This installs `knoxmancer` and its `km` alias.
 | `km new <directory>` | Create a Build 42 project |
 | `km init` | Adopt the current source-oriented project |
 | `km paths` | Show resolved artifact, installation, and staging paths |
+| `km copies` | Find matching local, staged, and Steam Workshop copies |
 | `km check` | Validate the playable mod |
 | `km check --workshop` | Validate all Workshop publishing inputs without building |
 | `km build` | Build under `dist/dev` |
@@ -35,9 +36,20 @@ This installs `knoxmancer` and its `km` alias.
 | `km doctor` | Run read-only project and environment readiness checks |
 | `km open <target>` | Open an existing artifact or game-facing directory |
 
-Use `km install` while developing and testing in the game. Use `km stage` when
-the mod is ready for **Workshop > Create and update items**. `km package` only
-creates the upload project; it does not copy it into Zomboid's Workshop folder.
+Use `km install` while developing and testing in the game. After installation,
+Knoxmancer reports every matching copy it finds and warns when a Steam
+subscription could compete with the local mod. Use `km stage` when the mod is
+ready for **Workshop > Create and update items**. Staging is replaced atomically
+and verified against the current mod ID and version. `km package` only creates
+the upload project; it does not copy it into Zomboid's Workshop folder.
+
+`km copies` distinguishes the playable local and Steam locations from Workshop
+uploader staging. Multiple playable copies, an outdated playable copy, or a
+copy without version metadata produce a conflict warning. Outdated uploader
+staging is reported separately because it can publish old files but is not a
+normal gameplay source. Run `km stage` to refresh it. Knoxmancer never modifies
+Steam-managed subscription files; unsubscribe through Steam while testing a
+local copy.
 
 ## Manifest
 
@@ -94,11 +106,15 @@ absolute paths; explicit command options continue to take precedence.
 km config set author "Your Name"
 km config set mods-root "C:\Users\you\Zomboid\mods"
 km config set workshop-root "C:\Users\you\Zomboid\Workshop"
+km config set steam-root "D:\Steam"
 km config show
 km config unset author
 ```
 
-`KNOXMANCER_CONFIG` may point to an alternate absolute configuration file.
+Knoxmancer discovers conventional Steam installations and the additional
+libraries in `steamapps/libraryfolders.vdf`. Set `steam-root` only when automatic
+discovery does not find the correct installation. `KNOXMANCER_CONFIG` may point
+to an alternate absolute configuration file.
 
 Completion scripts are written to standard output by default. Select either
 executable name with `--bin`, or use `--output` for an atomic direct-to-file
@@ -111,7 +127,8 @@ km completions zsh --bin knoxmancer --output _knoxmancer
 ```
 
 `km doctor` performs full local and Workshop validation without creating or
-replacing artifacts.
+replacing artifacts. It fails when installed playable copies are outdated or
+ambiguous and warns when Workshop uploader staging needs to be refreshed.
 
 `km open` accepts `artifact`, `mods`, `package`, or `workshop` and opens a
 directory only after the corresponding workflow has created it.
@@ -123,8 +140,9 @@ Warnings and errors are written to standard error. `--quiet` suppresses successf
 output but continues to report warnings and errors.
 
 Pass `--format json` to emit newline-delimited JSON objects. Every object has a
-stable `type` field (`status`, `path`, `warning`, or `error`). Path objects also
-contain `name` and `path`; error objects contain `kind`, `message`, and
+stable `type` field (`status`, `path`, `mod_copy`, `warning`, or `error`). Path
+objects also contain `name` and `path`. Mod-copy objects contain `source`,
+`version`, `current`, and `path`. Error objects contain `kind`, `message`, and
 `exit_code`. Help remains human-readable. Exit code `0` means success, `1` means
 a project, validation, environment, or filesystem failure, and `2` means invalid
 command-line usage.
@@ -134,6 +152,7 @@ does not accept `--format json`.
 
 ```sh
 km --format json paths
+km --format json copies
 km --quiet check
 ```
 
