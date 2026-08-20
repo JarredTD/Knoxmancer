@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-use clap::{Args, Parser, Subcommand, ValueEnum};
+use clap::{Args, Parser, Subcommand, ValueEnum, ValueHint};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -14,7 +14,12 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
 /// Parsed Knoxmancer command line.
 pub struct Cli {
     /// Starts project discovery from this path instead of the current directory.
-    #[arg(long, global = true, value_name = "PATH")]
+    #[arg(
+        long,
+        global = true,
+        value_name = "PATH",
+        value_hint = ValueHint::DirPath
+    )]
     pub project: Option<PathBuf>,
 
     /// Suppresses non-error output.
@@ -111,6 +116,7 @@ pub enum Command {
 /// Arguments for creating a new mod project.
 pub struct NewArgs {
     /// Empty destination directory to create or populate.
+    #[arg(value_hint = ValueHint::DirPath)]
     pub directory: PathBuf,
     #[arg(long)]
     /// Human-readable mod name; derived from the directory when omitted.
@@ -150,7 +156,7 @@ pub struct BuildArgs {}
 #[derive(Debug, Args, Default)]
 /// Arguments for local-play mod installation.
 pub struct InstallArgs {
-    #[arg(long, value_name = "PATH")]
+    #[arg(long, value_name = "PATH", value_hint = ValueHint::DirPath)]
     /// Overrides the default Project Zomboid mods root.
     pub root: Option<PathBuf>,
 }
@@ -162,7 +168,7 @@ pub struct PackageArgs {}
 #[derive(Debug, Args, Default)]
 /// Arguments for staging a Workshop project for Zomboid's uploader.
 pub struct StageArgs {
-    #[arg(long, value_name = "PATH")]
+    #[arg(long, value_name = "PATH", value_hint = ValueHint::DirPath)]
     /// Overrides the default Zomboid Workshop projects directory.
     pub root: Option<PathBuf>,
 }
@@ -218,7 +224,7 @@ pub struct CompletionsArgs {
     #[arg(long, value_enum, default_value = "km")]
     pub bin: CompletionBinary,
     /// Writes the script atomically to a file instead of standard output.
-    #[arg(short, long, value_name = "PATH")]
+    #[arg(short, long, value_name = "PATH", value_hint = ValueHint::FilePath)]
     pub output: Option<PathBuf>,
 }
 

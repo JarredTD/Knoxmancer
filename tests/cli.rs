@@ -211,6 +211,10 @@ fn generates_supported_shell_completions() {
         assert!(output.stderr.is_empty());
     }
 
+    let bash = String::from_utf8(km(&["completions", "bash"]).stdout).unwrap();
+    assert!(bash.contains("--project)"));
+    assert!(bash.contains("compopt -o plusdirs"));
+
     let quiet = km(&["--quiet", "completions", "bash"]);
     assert!(quiet.status.success());
     assert!(quiet.stdout.is_empty());
