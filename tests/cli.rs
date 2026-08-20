@@ -337,6 +337,7 @@ fn manages_machine_specific_user_defaults() {
     let config = temporary.path().join("settings/config.toml");
     let mods = temporary.path().join("mods");
     let workshop = temporary.path().join("workshop");
+    let steam = temporary.path().join("steam");
     let project = temporary.path().join("managed-mod");
 
     let relative_location = km_with_config(&["config", "show"], Path::new("config.toml"));
@@ -392,11 +393,17 @@ fn manages_machine_specific_user_defaults() {
         .status
         .success()
     );
+    assert!(
+        km_with_config(&["config", "set", "steam-root", path(&steam)], &config,)
+            .status
+            .success()
+    );
     let shown = km_with_config(&["config", "show"], &config);
     let shown = String::from_utf8(shown.stdout).unwrap();
     assert!(shown.contains("Test Author"));
     assert!(shown.contains(&mods.display().to_string()));
     assert!(shown.contains(&workshop.display().to_string()));
+    assert!(shown.contains(&steam.display().to_string()));
 
     assert!(
         km_with_config(&["new", path(&project)], &config)
@@ -433,6 +440,11 @@ fn manages_machine_specific_user_defaults() {
     );
     assert!(
         km_with_config(&["config", "unset", "workshop-root"], &config)
+            .status
+            .success()
+    );
+    assert!(
+        km_with_config(&["config", "unset", "steam-root"], &config)
             .status
             .success()
     );

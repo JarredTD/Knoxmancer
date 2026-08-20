@@ -22,6 +22,9 @@ pub(crate) struct UserConfig {
     /// Default Project Zomboid Workshop projects directory.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub workshop_root: Option<PathBuf>,
+    /// Steam installation or library directory used for Workshop discovery.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub steam_root: Option<PathBuf>,
 }
 
 /// Loaded user defaults and the file from which they were read.
@@ -71,6 +74,7 @@ fn validate(config: &UserConfig) -> Result<()> {
     for (name, path) in [
         ("mods root", config.mods_root.as_deref()),
         ("Workshop root", config.workshop_root.as_deref()),
+        ("Steam root", config.steam_root.as_deref()),
     ] {
         if let Some(path) = path
             && !path.is_absolute()
@@ -142,6 +146,7 @@ mod tests {
             author: Some("Test Author".to_owned()),
             mods_root: Some(temporary.path().join("mods")),
             workshop_root: None,
+            steam_root: None,
         };
         assert!(save(&path, &config).unwrap().is_none());
         assert_eq!(load_from(&path).unwrap(), config);

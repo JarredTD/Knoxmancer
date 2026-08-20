@@ -218,6 +218,9 @@ fn configure(args: ConfigArgs, reporter: &Reporter) -> Result<()> {
             )?;
             reporter.path("mods_root", "Mods root", &mods);
             reporter.path("workshop_root", "Workshop root", &workshop);
+            if let Some(steam) = &loaded.values.steam_root {
+                reporter.path("steam_root", "Steam root", steam);
+            }
             Ok(())
         }
         ConfigCommand::Set { key, value } => {
@@ -225,6 +228,7 @@ fn configure(args: ConfigArgs, reporter: &Reporter) -> Result<()> {
                 ConfigKey::Author => loaded.values.author = Some(value.trim().to_owned()),
                 ConfigKey::ModsRoot => loaded.values.mods_root = Some(value.into()),
                 ConfigKey::WorkshopRoot => loaded.values.workshop_root = Some(value.into()),
+                ConfigKey::SteamRoot => loaded.values.steam_root = Some(value.into()),
             }
             save_user_config(&loaded.path, &loaded.values, reporter)
         }
@@ -233,6 +237,7 @@ fn configure(args: ConfigArgs, reporter: &Reporter) -> Result<()> {
                 ConfigKey::Author => loaded.values.author = None,
                 ConfigKey::ModsRoot => loaded.values.mods_root = None,
                 ConfigKey::WorkshopRoot => loaded.values.workshop_root = None,
+                ConfigKey::SteamRoot => loaded.values.steam_root = None,
             }
             save_user_config(&loaded.path, &loaded.values, reporter)
         }

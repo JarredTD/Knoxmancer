@@ -213,6 +213,8 @@ pub enum ConfigKey {
     ModsRoot,
     /// Default Project Zomboid Workshop projects directory.
     WorkshopRoot,
+    /// Steam installation or library directory used for Workshop discovery.
+    SteamRoot,
 }
 
 #[derive(Debug, Args)]
