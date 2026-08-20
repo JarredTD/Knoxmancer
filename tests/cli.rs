@@ -71,16 +71,18 @@ fn scaffolds_checks_builds_packages_installs_and_cleans() {
     );
     assert!(km(&["--project", path(&project), "check"]).status.success());
     assert!(km(&["--project", path(&project), "build"]).status.success());
+    let staged = km(&[
+        "--project",
+        path(&project),
+        "stage",
+        "--root",
+        path(&workshop_projects),
+    ]);
+    assert!(staged.status.success());
     assert!(
-        km(&[
-            "--project",
-            path(&project),
-            "stage",
-            "--root",
-            path(&workshop_projects),
-        ])
-        .status
-        .success()
+        String::from_utf8(staged.stdout)
+            .unwrap()
+            .contains("Verified Workshop staging: 0.1.0")
     );
     assert!(
         km(&[

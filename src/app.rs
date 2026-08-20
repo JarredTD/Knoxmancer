@@ -69,7 +69,7 @@ pub(crate) fn run(cli: Cli, reporter: &Reporter) -> Result<()> {
                 "Installed for local play: {}",
                 installed.path.display()
             ));
-            let copies = discover_copies_for(&built.mod_id, &built.build, &config, root)?;
+            let copies = discover_copies_for(&built.mod_id, &built.build, &config, root, None)?;
             report_copies(&copies, &built.version, reporter);
             report_stale_staging(&copies, &built.version, reporter);
             if crate::system::copies::has_playable_conflict(&copies, &built.version) {
@@ -106,6 +106,36 @@ pub(crate) fn run(cli: Cli, reporter: &Reporter) -> Result<()> {
                 "Staged for Workshop upload: {}",
                 staged.path.display()
             ));
+            let copies = discover_copies_for(
+                &validated.metadata.id,
+                &validated.metadata.build,
+                &config,
+                None,
+                root,
+            )?;
+            let expected = staged
+                .path
+                .join("Contents/mods")
+                .join(&validated.metadata.id);
+            if !copies.iter().any(|copy| {
+                copy.source == crate::system::copies::CopySource::Staging
+                    && copy.path == expected
+                    && copy.is_current(&validated.metadata.version)
+            }) {
+                return Err(Error::project(
+                    "Workshop staging verification failed after replacement",
+                ));
+            }
+            reporter.status(&format!(
+                "Verified Workshop staging: {}",
+                validated.metadata.version
+            ));
+            report_stale_staging(&copies, &validated.metadata.version, reporter);
+            if crate::system::copies::has_playable_conflict(&copies, &validated.metadata.version) {
+                reporter.warning(
+                    "playable mod copies still conflict; run `km copies` before testing locally",
+                );
+            }
             reporter.status("Next: open Workshop > Create and update items in Project Zomboid.");
             Ok(())
         }
@@ -385,6 +415,7 @@ fn discover_copies(
         &validated.metadata.build,
         config,
         None,
+        None,
     )
 }
 
@@ -394,13 +425,16 @@ fn discover_copies_for(
     build: &str,
     config: &UserConfig,
     mods_override: Option<&std::path::Path>,
+    workshop_override: Option<&std::path::Path>,
 ) -> Result<Vec<crate::system::copies::InstalledCopy>> {
     let mods = crate::system::environment::zomboid_root(
         mods_override.or(config.mods_root.as_deref()),
         "mods",
     )?;
-    let workshop =
-        crate::system::environment::zomboid_root(config.workshop_root.as_deref(), "Workshop")?;
+    let workshop = crate::system::environment::zomboid_root(
+        workshop_override.or(config.workshop_root.as_deref()),
+        "Workshop",
+    )?;
     crate::system::copies::discover(
         mod_id,
         build,
