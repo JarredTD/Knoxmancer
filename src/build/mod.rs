@@ -17,6 +17,10 @@ pub struct DevelopmentArtifact {
     pub path: PathBuf,
     /// Project Zomboid mod identifier.
     pub mod_id: String,
+    /// Version declared by the built mod.
+    pub version: String,
+    /// Project Zomboid build directory in the artifact.
+    pub build: String,
     /// Non-fatal cleanup warnings produced during replacement.
     pub warnings: Vec<String>,
 }
@@ -59,6 +63,8 @@ pub fn build(validated: &ValidatedProject<'_>) -> Result<DevelopmentArtifact> {
     Ok(DevelopmentArtifact {
         path: destination,
         mod_id: metadata.id.clone(),
+        version: metadata.version.clone(),
+        build: metadata.build.clone(),
         warnings: replacement.cleanup_warning.into_iter().collect(),
     })
 }
@@ -144,6 +150,8 @@ mod tests {
         let artifact = DevelopmentArtifact {
             path: temporary.path().join("artifact"),
             mod_id: "../outside".to_owned(),
+            version: "1.0.0".to_owned(),
+            build: "42".to_owned(),
             warnings: Vec::new(),
         };
         assert!(install(&artifact, Some(temporary.path())).is_err());

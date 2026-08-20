@@ -243,6 +243,14 @@ fn reports_local_staging_and_steam_copies() {
     )
     .unwrap();
 
+    let installed = km_with_config(&["--project", path(&project), "install"], &config);
+    assert!(installed.status.success());
+    assert!(
+        String::from_utf8(installed.stderr)
+            .unwrap()
+            .contains("playable mod copies conflict")
+    );
+
     let output = km_with_config(
         &["--format", "json", "--project", path(&project), "copies"],
         &config,

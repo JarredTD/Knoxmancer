@@ -69,6 +69,14 @@ pub(crate) fn run(cli: Cli, reporter: &Reporter) -> Result<()> {
                 "Installed for local play: {}",
                 installed.path.display()
             ));
+            let copies = discover_copies_for(&built.mod_id, &built.build, &config, root)?;
+            report_copies(&copies, &built.version, reporter);
+            report_stale_staging(&copies, &built.version, reporter);
+            if crate::system::copies::has_playable_conflict(&copies, &built.version) {
+                reporter.warning(
+                    "playable mod copies conflict; run `km copies` and unsubscribe the Steam copy while testing locally",
+                );
+            }
             reporter.status("Next: enable the mod in Project Zomboid.");
             Ok(())
         }
@@ -372,12 +380,30 @@ fn discover_copies(
     validated: &ValidatedProject<'_>,
     config: &UserConfig,
 ) -> Result<Vec<crate::system::copies::InstalledCopy>> {
-    let mods = crate::system::environment::zomboid_root(config.mods_root.as_deref(), "mods")?;
+    discover_copies_for(
+        &validated.metadata.id,
+        &validated.metadata.build,
+        config,
+        None,
+    )
+}
+
+/// Discovers copies for explicit project identity and optional install root.
+fn discover_copies_for(
+    mod_id: &str,
+    build: &str,
+    config: &UserConfig,
+    mods_override: Option<&std::path::Path>,
+) -> Result<Vec<crate::system::copies::InstalledCopy>> {
+    let mods = crate::system::environment::zomboid_root(
+        mods_override.or(config.mods_root.as_deref()),
+        "mods",
+    )?;
     let workshop =
         crate::system::environment::zomboid_root(config.workshop_root.as_deref(), "Workshop")?;
     crate::system::copies::discover(
-        &validated.metadata.id,
-        &validated.metadata.build,
+        mod_id,
+        build,
         &mods,
         &workshop,
         config.steam_root.as_deref(),
