@@ -259,6 +259,14 @@ fn reports_local_staging_and_steam_copies() {
     assert_eq!(events[1]["source"], "staging");
     assert_eq!(events[2]["source"], "steam");
     assert!(!output.stderr.is_empty());
+
+    let doctor = km_with_config(&["--project", path(&project), "doctor"], &config);
+    assert_eq!(doctor.status.code(), Some(1));
+    assert!(
+        String::from_utf8(doctor.stderr)
+            .unwrap()
+            .contains("installed mod copies conflict")
+    );
 }
 
 #[test]

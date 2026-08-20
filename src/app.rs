@@ -160,6 +160,14 @@ fn doctor(start: Option<&std::path::Path>, reporter: &Reporter) -> Result<()> {
     reporter.path("mods_root", "Mods root", mods_root);
     reporter.path("workshop_root", "Workshop root", workshop_root);
     report_checked(&validated, reporter);
+    let copies = discover_copies(&validated, &loaded.values)?;
+    report_copies(&copies, &validated.metadata.version, reporter);
+    report_stale_staging(&copies, &validated.metadata.version, reporter);
+    if crate::system::copies::has_playable_conflict(&copies, &validated.metadata.version) {
+        return Err(Error::project(
+            "installed mod copies conflict; run `km copies` and unsubscribe stale Steam copies",
+        ));
+    }
     reporter.status("Doctor: ready for local play and Workshop packaging.");
     Ok(())
 }
@@ -319,21 +327,44 @@ fn copies(project: &Project, config: &UserConfig, reporter: &Reporter) -> Result
         reporter.status("No installed copies found.");
         return Ok(());
     }
-    for copy in &copies {
-        reporter.mod_copy(
-            copy.source.as_str(),
-            copy.source.label(),
-            copy.version.as_deref(),
-            copy.is_current(&validated.metadata.version),
-            &copy.path,
-        );
-    }
+    report_copies(&copies, &validated.metadata.version, reporter);
+    report_stale_staging(&copies, &validated.metadata.version, reporter);
     if crate::system::copies::has_playable_conflict(&copies, &validated.metadata.version) {
         reporter.warning(
             "multiple or outdated playable copies can make Project Zomboid load unexpected files",
         );
     }
     Ok(())
+}
+
+/// Emits each installed-copy record using the active output format.
+fn report_copies(
+    copies: &[crate::system::copies::InstalledCopy],
+    version: &str,
+    reporter: &Reporter,
+) {
+    for copy in copies {
+        reporter.mod_copy(
+            copy.source.as_str(),
+            copy.source.label(),
+            copy.version.as_deref(),
+            copy.is_current(version),
+            &copy.path,
+        );
+    }
+}
+
+/// Recommends refreshing uploader staging when it does not match the project.
+fn report_stale_staging(
+    copies: &[crate::system::copies::InstalledCopy],
+    version: &str,
+    reporter: &Reporter,
+) {
+    if copies.iter().any(|copy| {
+        copy.source == crate::system::copies::CopySource::Staging && !copy.is_current(version)
+    }) {
+        reporter.warning("Workshop staging is outdated; run `km stage` to refresh it");
+    }
 }
 
 /// Discovers copies using the same configured game-facing roots as other commands.
