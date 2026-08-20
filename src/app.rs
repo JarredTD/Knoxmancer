@@ -38,6 +38,11 @@ pub(crate) fn run(cli: Cli, reporter: &Reporter) -> Result<()> {
             paths(&project, &config, reporter)?;
             Ok(())
         }
+        Command::Copies(_) => {
+            let project = discover(project_start.as_deref())?;
+            let config = user_config::load()?.values;
+            copies(&project, &config, reporter)
+        }
         Command::Check(args) => {
             let project = discover(project_start.as_deref())?;
             let target = if args.workshop {
@@ -304,6 +309,48 @@ fn paths(project: &Project, config: &UserConfig, reporter: &Reporter) -> Result<
         reporter.path(name, label, &path);
     }
     Ok(())
+}
+
+/// Reports copies of the current mod found in game-facing directories.
+fn copies(project: &Project, config: &UserConfig, reporter: &Reporter) -> Result<()> {
+    let validated = validation::check(project, ValidationTarget::Playable)?;
+    let copies = discover_copies(&validated, config)?;
+    if copies.is_empty() {
+        reporter.status("No installed copies found.");
+        return Ok(());
+    }
+    for copy in &copies {
+        reporter.mod_copy(
+            copy.source.as_str(),
+            copy.source.label(),
+            copy.version.as_deref(),
+            copy.is_current(&validated.metadata.version),
+            &copy.path,
+        );
+    }
+    if crate::system::copies::has_playable_conflict(&copies, &validated.metadata.version) {
+        reporter.warning(
+            "multiple or outdated playable copies can make Project Zomboid load unexpected files",
+        );
+    }
+    Ok(())
+}
+
+/// Discovers copies using the same configured game-facing roots as other commands.
+fn discover_copies(
+    validated: &ValidatedProject<'_>,
+    config: &UserConfig,
+) -> Result<Vec<crate::system::copies::InstalledCopy>> {
+    let mods = crate::system::environment::zomboid_root(config.mods_root.as_deref(), "mods")?;
+    let workshop =
+        crate::system::environment::zomboid_root(config.workshop_root.as_deref(), "Workshop")?;
+    crate::system::copies::discover(
+        &validated.metadata.id,
+        &validated.metadata.build,
+        &mods,
+        &workshop,
+        config.steam_root.as_deref(),
+    )
 }
 
 /// Fully resolved artifact and game-facing paths for one validated project.

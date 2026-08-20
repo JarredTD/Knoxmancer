@@ -90,6 +90,8 @@ pub enum Command {
     Init(InitArgs),
     /// Reports resolved artifact, installation, and staging paths.
     Paths(PathsArgs),
+    /// Finds local and Workshop copies of the current mod.
+    Copies(CopiesArgs),
     /// Validates the project for local builds.
     Check(CheckArgs),
     /// Creates a playable artifact under the output directory.
@@ -140,6 +142,10 @@ pub struct InitArgs {
 #[derive(Debug, Args, Default)]
 /// Arguments for resolved project paths.
 pub struct PathsArgs {}
+
+#[derive(Debug, Args, Default)]
+/// Arguments for installed-copy discovery.
+pub struct CopiesArgs {}
 
 #[derive(Debug, Args, Default)]
 /// Arguments for project validation.

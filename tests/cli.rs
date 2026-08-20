@@ -194,9 +194,71 @@ fn full_and_short_binaries_expose_the_same_version() {
     let install_help = String::from_utf8(km(&["install", "--help"]).stdout).unwrap();
     assert!(!build_help.contains("--release"));
     assert!(!install_help.contains("--release"));
-    for command in ["config", "completions", "doctor", "open"] {
+    for command in ["config", "completions", "copies", "doctor", "open"] {
         assert!(help.contains(command), "missing {command} command");
     }
+}
+
+#[test]
+fn reports_local_staging_and_steam_copies() {
+    let temporary = tempdir().unwrap();
+    let config = temporary.path().join("config.toml");
+    let project = temporary.path().join("copy-mod");
+    let mods = temporary.path().join("mods");
+    let workshop = temporary.path().join("Workshop");
+    let steam = temporary.path().join("Steam");
+    assert!(
+        km_with_config(&["new", path(&project)], &config)
+            .status
+            .success()
+    );
+    for (key, root) in [
+        ("mods-root", &mods),
+        ("workshop-root", &workshop),
+        ("steam-root", &steam),
+    ] {
+        assert!(
+            km_with_config(&["config", "set", key, path(root)], &config)
+                .status
+                .success()
+        );
+    }
+    assert!(
+        km_with_config(&["--project", path(&project), "install"], &config)
+            .status
+            .success()
+    );
+    let staging = workshop.join("item/Contents/mods/CopyMod/42");
+    let subscribed = steam.join("steamapps/workshop/content/108600/123/mods/CopyMod/42");
+    fs::create_dir_all(&staging).unwrap();
+    fs::create_dir_all(&subscribed).unwrap();
+    fs::write(
+        staging.join("mod.info"),
+        "name=Copy Mod\nid=CopyMod\nmodversion=0.9.0\n",
+    )
+    .unwrap();
+    fs::write(
+        subscribed.join("mod.info"),
+        "name=Copy Mod\nid=CopyMod\nmodversion=0.8.0\n",
+    )
+    .unwrap();
+
+    let output = km_with_config(
+        &["--format", "json", "--project", path(&project), "copies"],
+        &config,
+    );
+    assert!(output.status.success());
+    let events = String::from_utf8(output.stdout)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(events.len(), 3);
+    assert!(events.iter().all(|event| event["type"] == "mod_copy"));
+    assert_eq!(events[0]["source"], "local");
+    assert_eq!(events[1]["source"], "staging");
+    assert_eq!(events[2]["source"], "steam");
+    assert!(!output.stderr.is_empty());
 }
 
 #[test]

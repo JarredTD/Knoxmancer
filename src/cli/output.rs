@@ -106,6 +106,45 @@ impl Reporter {
         );
     }
 
+    /// Emits one discovered installed mod copy.
+    pub(crate) fn mod_copy(
+        &self,
+        source: &'static str,
+        label: &str,
+        version: Option<&str>,
+        current: bool,
+        path: &Path,
+    ) {
+        if self.options.quiet {
+            return;
+        }
+        match self.options.format {
+            OutputFormat::Human => write_human(
+                std::io::stdout(),
+                &format!(
+                    "{label}: {}{} ({})",
+                    version.unwrap_or("unknown version"),
+                    if current {
+                        " [current]"
+                    } else {
+                        " [different]"
+                    },
+                    path.display()
+                ),
+            ),
+            OutputFormat::Json => write_json(
+                std::io::stdout(),
+                &ModCopyEvent {
+                    event_type: "mod_copy",
+                    source,
+                    version,
+                    current,
+                    path: &path.display().to_string(),
+                },
+            ),
+        }
+    }
+
     /// Emits a human-readable Clap response while tolerating a closed output pipe.
     pub fn usage(error: &Error) {
         if error.exit_code() == 0 {
@@ -156,6 +195,22 @@ struct ErrorEvent<'a> {
 fn write_human(stream: impl Write, message: &str) {
     let mut stream = stream;
     let _ = writeln!(stream, "{message}");
+}
+
+/// A JSON event describing one discovered mod copy.
+#[derive(Serialize)]
+struct ModCopyEvent<'a> {
+    /// Event discriminator.
+    #[serde(rename = "type")]
+    event_type: &'static str,
+    /// Stable installation source.
+    source: &'static str,
+    /// Version declared by the copy, when available.
+    version: Option<&'a str>,
+    /// Whether the copy matches the project version.
+    current: bool,
+    /// Root directory of the matching mod.
+    path: &'a str,
 }
 
 /// Writes text verbatim while tolerating a closed output pipe.
