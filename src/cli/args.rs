@@ -214,6 +214,31 @@ pub enum ConfigKey {
 pub struct CompletionsArgs {
     /// Shell whose completion script should be generated.
     pub shell: CompletionShell,
+    /// Executable name registered by the completion script.
+    #[arg(long, value_enum, default_value = "km")]
+    pub bin: CompletionBinary,
+    /// Writes the script atomically to a file instead of standard output.
+    #[arg(short, long, value_name = "PATH")]
+    pub output: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+/// Executable names supported by completion generation.
+pub enum CompletionBinary {
+    /// Short executable name.
+    Km,
+    /// Full executable name.
+    Knoxmancer,
+}
+
+impl CompletionBinary {
+    /// Returns the executable name embedded in the generated script.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Km => "km",
+            Self::Knoxmancer => "knoxmancer",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]

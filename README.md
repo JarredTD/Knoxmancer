@@ -100,11 +100,14 @@ km config unset author
 
 `KNOXMANCER_CONFIG` may point to an alternate absolute configuration file.
 
-Completion scripts are written directly to standard output:
+Completion scripts are written to standard output by default. Select either
+executable name with `--bin`, or use `--output` for an atomic direct-to-file
+write:
 
 ```sh
 km completions powershell > _km.ps1
-km completions bash > km.bash
+km completions bash --output km.bash
+km completions zsh --bin knoxmancer --output _knoxmancer
 ```
 
 `km doctor` performs full local and Workshop validation without creating or

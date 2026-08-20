@@ -219,6 +219,30 @@ fn generates_supported_shell_completions() {
             .status
             .success()
     );
+
+    let full = km(&["completions", "powershell", "--bin", "knoxmancer"]);
+    assert!(full.status.success());
+    assert!(String::from_utf8_lossy(&full.stdout).contains("-CommandName 'knoxmancer'"));
+
+    let temporary = tempdir().unwrap();
+    let script = temporary.path().join("completions/km.bash");
+    let written = km(&["completions", "bash", "--output", path(&script)]);
+    assert!(written.status.success());
+    assert!(script.is_file());
+    assert!(!fs::read(&script).unwrap().is_empty());
+    assert!(String::from_utf8_lossy(&written.stdout).contains("Completion script:"));
+
+    let quiet_script = temporary.path().join("quiet.zsh");
+    let written = km(&[
+        "--quiet",
+        "completions",
+        "zsh",
+        "--output",
+        path(&quiet_script),
+    ]);
+    assert!(written.status.success());
+    assert!(written.stdout.is_empty());
+    assert!(quiet_script.is_file());
 }
 
 #[test]

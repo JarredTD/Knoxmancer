@@ -1,5 +1,6 @@
 //! Application workflows connecting CLI input, core operations, and output.
 
+use std::io::Write;
 use std::path::PathBuf;
 
 use crate::build::{self, DevelopmentArtifact};
@@ -8,7 +9,7 @@ use clap::CommandFactory;
 
 use crate::cli::args::OutputFormat;
 use crate::cli::{
-    Cli, Command, CompletionShell, ConfigArgs, ConfigCommand, ConfigKey, NewArgs, OpenTarget,
+    Cli, Command, CompletionsArgs, ConfigArgs, ConfigCommand, ConfigKey, NewArgs, OpenTarget,
 };
 use crate::error::{Error, Result};
 use crate::project::validation::ValidationTarget;
@@ -106,7 +107,7 @@ pub(crate) fn run(cli: Cli, reporter: &Reporter) -> Result<()> {
             Ok(())
         }
         Command::Config(args) => configure(args, reporter),
-        Command::Completions(args) => completions(args.shell, quiet, format),
+        Command::Completions(args) => completions(args, quiet, format, reporter),
         Command::Doctor(_) => doctor(project_start.as_deref(), reporter),
         Command::Open(args) => open(project_start.as_deref(), args.target, reporter),
     }
@@ -159,8 +160,13 @@ fn doctor(start: Option<&std::path::Path>, reporter: &Reporter) -> Result<()> {
 }
 
 /// Emits a raw completion script for the requested shell.
-fn completions(shell: CompletionShell, quiet: bool, format: OutputFormat) -> Result<()> {
-    if quiet {
+fn completions(
+    args: CompletionsArgs,
+    quiet: bool,
+    format: OutputFormat,
+    reporter: &Reporter,
+) -> Result<()> {
+    if quiet && args.output.is_none() {
         return Ok(());
     }
     if format == OutputFormat::Json {
@@ -168,12 +174,27 @@ fn completions(shell: CompletionShell, quiet: bool, format: OutputFormat) -> Res
             "--format json is not supported by the completions command",
         ));
     }
+    let mut script = Vec::new();
     clap_complete::generate(
-        clap_complete::Shell::from(shell),
+        clap_complete::Shell::from(args.shell),
         &mut Cli::command(),
-        "km",
-        &mut std::io::stdout(),
+        args.bin.as_str(),
+        &mut script,
     );
+    if let Some(output) = args.output {
+        let output = if output.is_absolute() {
+            output
+        } else {
+            std::env::current_dir().map_err(Error::io)?.join(output)
+        };
+        let replacement = crate::system::fs::atomic_write(&output, &script)?;
+        if let Some(warning) = replacement.cleanup_warning {
+            reporter.warning(&warning);
+        }
+        reporter.path("completion_script", "Completion script", &output);
+    } else {
+        let _ = std::io::stdout().write_all(&script);
+    }
     Ok(())
 }
 
