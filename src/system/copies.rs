@@ -265,11 +265,11 @@ fn windows_registry_steam_roots() -> Vec<PathBuf> {
         roots.insert(PathBuf::from(path));
     }
     let local_machine = RegKey::predef(HKEY_LOCAL_MACHINE);
-    for key_path in [
-        "Software\\Valve\\Steam",
-        "Software\\WOW6432Node\\Valve\\Steam",
+    for (key_path, flags) in [
+        ("Software\\Valve\\Steam", KEY_READ | KEY_WOW64_32KEY),
+        ("Software\\WOW6432Node\\Valve\\Steam", KEY_READ),
     ] {
-        if let Ok(key) = local_machine.open_subkey_with_flags(key_path, KEY_READ | KEY_WOW64_32KEY)
+        if let Ok(key) = local_machine.open_subkey_with_flags(key_path, flags)
             && let Ok(path) = key.get_value::<String, _>("InstallPath")
         {
             roots.insert(PathBuf::from(path));
@@ -346,6 +346,12 @@ mod tests {
         let steam = temporary.path().join("Steam");
         write_mod(&mods.join("local-name"), "42", "Example", Some("1.0.0"));
         write_mod(
+            &mods.join("second-local-name"),
+            "42",
+            "Example",
+            Some("1.0.0"),
+        );
+        write_mod(
             &staging.join("project/Contents/mods/staged-name"),
             "42",
             "Example",
@@ -358,13 +364,20 @@ mod tests {
             None,
         );
         write_mod(&mods.join("other"), "42", "Other", Some("1.0.0"));
+        fs::write(mods.join("not-a-mod.txt"), "ignored").unwrap();
 
         let copies = discover("Example", "42", &mods, &staging, Some(&steam)).unwrap();
-        assert_eq!(copies.len(), 3);
+        assert_eq!(copies.len(), 4);
         assert!(has_playable_conflict(&copies, "1.0.0"));
-        assert_eq!(copies[0].source, CopySource::Local);
-        assert_eq!(copies[1].source, CopySource::Staging);
-        assert_eq!(copies[2].source, CopySource::Steam);
+        assert_eq!(
+            copies
+                .iter()
+                .filter(|copy| copy.source == CopySource::Local)
+                .count(),
+            2
+        );
+        assert_eq!(copies[2].source, CopySource::Staging);
+        assert_eq!(copies[3].source, CopySource::Steam);
     }
 
     #[test]
@@ -395,6 +408,22 @@ mod tests {
             .unwrap()
             .is_empty()
         );
+
+        let steam = temporary.path().join("Steam");
+        let extra = temporary.path().join("Extra Library");
+        fs::create_dir_all(steam.join("steamapps")).unwrap();
+        let encoded_extra = extra.display().to_string().replace('\\', "\\\\");
+        fs::write(
+            steam.join("steamapps/libraryfolders.vdf"),
+            format!(
+                "\"libraryfolders\"\n{{\n\t\"1\"\n\t{{\n\t\t\"path\" \"{}\"\n\t}}\n}}\n",
+                encoded_extra
+            ),
+        )
+        .unwrap();
+        let libraries = steam_libraries(Some(&steam.join("steamapps"))).unwrap();
+        assert!(libraries.contains(&steam));
+        assert!(libraries.contains(&extra));
     }
 
     #[test]
@@ -405,5 +434,11 @@ mod tests {
             path: PathBuf::from("Example"),
         };
         assert!(!has_playable_conflict(&[copy], "1.0.0"));
+        let stale = InstalledCopy {
+            source: CopySource::Steam,
+            version: Some("0.9.0".to_owned()),
+            path: PathBuf::from("Stale"),
+        };
+        assert!(has_playable_conflict(&[stale], "1.0.0"));
     }
 }
