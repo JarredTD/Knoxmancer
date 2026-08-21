@@ -122,6 +122,111 @@ fn scaffolds_checks_builds_packages_installs_and_cleans() {
 }
 
 #[test]
+fn live_install_synchronizes_an_existing_local_copy() {
+    let temporary = tempdir().unwrap();
+    let config = temporary.path().join("config.toml");
+    let project = temporary.path().join("live-mod");
+    let mods = temporary.path().join("mods");
+    assert!(
+        km_with_config(&["new", path(&project)], &config)
+            .status
+            .success()
+    );
+
+    let missing = km_with_config(
+        &[
+            "--project",
+            path(&project),
+            "install",
+            "--live",
+            "--root",
+            path(&mods),
+        ],
+        &config,
+    );
+    assert_eq!(missing.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&missing.stderr).contains("run `km install` first"));
+
+    assert!(
+        km_with_config(
+            &[
+                "--project",
+                path(&project),
+                "install",
+                "--root",
+                path(&mods),
+            ],
+            &config,
+        )
+        .status
+        .success()
+    );
+    let source = project.join("src/client/LiveMod");
+    fs::create_dir_all(&source).unwrap();
+    fs::create_dir_all(project.join("src/media")).unwrap();
+    fs::write(source.join("Main.lua"), "return 'updated'\n").unwrap();
+    fs::write(project.join("src/media/new.txt"), "asset\n").unwrap();
+    let installed = mods.join("LiveMod/42");
+    fs::write(installed.join("obsolete.lua"), "return false\n").unwrap();
+
+    let output = km_with_config(
+        &[
+            "--project",
+            path(&project),
+            "install",
+            "--live",
+            "--root",
+            path(&mods),
+        ],
+        &config,
+    );
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stdout.contains("Live install:"));
+    assert!(stdout.contains("Live-installed for local play:"));
+    assert!(stdout.contains("applied create:"));
+    assert!(stdout.contains("applied remove:"));
+    assert!(stderr.contains("non-atomic"));
+    assert!(stderr.contains("non-Lua files changed"));
+    assert!(stderr.contains("Lua files were added or removed"));
+    assert_eq!(
+        fs::read_to_string(installed.join("media/lua/client/LiveMod/Main.lua")).unwrap(),
+        "return 'updated'\n"
+    );
+    assert_eq!(
+        fs::read_to_string(installed.join("media/new.txt")).unwrap(),
+        "asset\n"
+    );
+    assert!(!installed.join("obsolete.lua").exists());
+
+    let json = km_with_config(
+        &[
+            "--format",
+            "json",
+            "--project",
+            path(&project),
+            "install",
+            "--live",
+            "--root",
+            path(&mods),
+        ],
+        &config,
+    );
+    assert!(json.status.success());
+    let events = String::from_utf8(json.stdout)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
+        .collect::<Vec<_>>();
+    assert!(events.iter().any(|event| {
+        event["type"] == "file_operation"
+            && event["action"] == "unchanged"
+            && event["status"] == "unchanged"
+    }));
+}
+
+#[test]
 fn initializes_an_existing_mod_without_rewriting_metadata() {
     let temporary = tempdir().unwrap();
     let metadata = temporary.path().join("src/mod.info");
