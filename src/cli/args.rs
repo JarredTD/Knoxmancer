@@ -165,6 +165,9 @@ pub struct InstallArgs {
     #[arg(long, value_name = "PATH", value_hint = ValueHint::DirPath)]
     /// Overrides the default Project Zomboid mods root.
     pub root: Option<PathBuf>,
+    /// Synchronizes files into an existing installation without replacing its directory.
+    #[arg(long)]
+    pub live: bool,
 }
 
 #[derive(Debug, Args, Default)]

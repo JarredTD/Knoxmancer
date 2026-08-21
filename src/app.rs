@@ -63,12 +63,45 @@ pub(crate) fn run(cli: Cli, reporter: &Reporter) -> Result<()> {
             let built = build(&project, reporter)?;
             let config = user_config::load()?.values;
             let root = args.root.as_deref().or(config.mods_root.as_deref());
-            let installed = build::install(&built, root)?;
-            report_warnings(&installed.warnings, reporter);
-            reporter.status(&format!(
-                "Installed for local play: {}",
-                installed.path.display()
-            ));
+            if args.live {
+                reporter.warning(
+                    "live installation is non-atomic; exit the world and remain at the main menu until synchronization finishes",
+                );
+                let installed = build::install_live(&built, root)?;
+                for operation in &installed.operations {
+                    reporter.live_operation(operation);
+                }
+                report_live_summary(&installed, reporter);
+                if installed.has_non_lua_changes() {
+                    reporter.warning(
+                        "non-Lua files changed; restarting Project Zomboid may be required",
+                    );
+                }
+                if installed.has_lua_topology_changes() {
+                    reporter.warning(
+                        "Lua files were added or removed; Reload Lua may not discover the new file set, so a restart may be required",
+                    );
+                }
+                if !installed.is_complete() {
+                    return Err(Error::io(std::io::Error::other(format!(
+                        "live installation was incomplete at {}; review the failed and skipped operations above",
+                        installed.path.display()
+                    ))));
+                }
+                reporter.status(&format!(
+                    "Live-installed for local play: {}",
+                    installed.path.display()
+                ));
+                reporter.status("Next: at the main menu, use Reload Lua before loading the world.");
+            } else {
+                let installed = build::install(&built, root)?;
+                report_warnings(&installed.warnings, reporter);
+                reporter.status(&format!(
+                    "Installed for local play: {}",
+                    installed.path.display()
+                ));
+                reporter.status("Next: enable the mod in Project Zomboid.");
+            }
             let copies = discover_copies_for(&built.mod_id, &built.build, &config, root, None)?;
             report_copies(&copies, &built.version, reporter);
             report_stale_staging(&copies, &built.version, reporter);
@@ -77,7 +110,6 @@ pub(crate) fn run(cli: Cli, reporter: &Reporter) -> Result<()> {
                     "playable mod copies conflict; run `km copies` and unsubscribe the Steam copy while testing locally",
                 );
             }
-            reporter.status("Next: enable the mod in Project Zomboid.");
             Ok(())
         }
         Command::Package(_) => {
@@ -154,6 +186,28 @@ pub(crate) fn run(cli: Cli, reporter: &Reporter) -> Result<()> {
         Command::Doctor(_) => doctor(project_start.as_deref(), reporter),
         Command::Open(args) => open(project_start.as_deref(), args.target, reporter),
     }
+}
+
+/// Reports aggregate live-install file operation counts.
+fn report_live_summary(installed: &build::LiveInstallResult, reporter: &Reporter) {
+    let count = |action, status| installed.count(action, status);
+    let failed = installed
+        .operations
+        .iter()
+        .filter(|operation| operation.status == build::LiveStatus::Failed)
+        .count();
+    let skipped = installed
+        .operations
+        .iter()
+        .filter(|operation| operation.status == build::LiveStatus::Skipped)
+        .count();
+    reporter.status(&format!(
+        "Live install: {} created, {} updated, {} removed, {} unchanged, {failed} failed, {skipped} skipped",
+        count(build::LiveAction::Create, build::LiveStatus::Applied),
+        count(build::LiveAction::Update, build::LiveStatus::Applied),
+        count(build::LiveAction::Remove, build::LiveStatus::Applied),
+        count(build::LiveAction::Unchanged, build::LiveStatus::Unchanged),
+    ));
 }
 
 /// Opens one resolved directory in the platform file browser.
@@ -506,5 +560,33 @@ mod tests {
         let cli = Cli::try_parse_from(["km", "--quiet", "--format", "json", "check"]).unwrap();
         let reporter = Reporter::new(cli.output_options());
         report_warnings(&["first".to_owned(), "second".to_owned()], &reporter);
+    }
+
+    #[test]
+    fn reports_a_complete_live_install_summary() {
+        let cli = Cli::try_parse_from(["km", "--quiet", "install"]).unwrap();
+        let reporter = Reporter::new(cli.output_options());
+        let operations = [
+            (build::LiveAction::Create, build::LiveStatus::Applied),
+            (build::LiveAction::Update, build::LiveStatus::Applied),
+            (build::LiveAction::Remove, build::LiveStatus::Applied),
+            (build::LiveAction::Unchanged, build::LiveStatus::Unchanged),
+            (build::LiveAction::Verify, build::LiveStatus::Failed),
+            (build::LiveAction::Remove, build::LiveStatus::Skipped),
+        ]
+        .into_iter()
+        .map(|(action, status)| build::LiveOperation {
+            action,
+            status,
+            path: "42/file.lua".into(),
+            message: None,
+        })
+        .collect();
+        let installed = build::LiveInstallResult {
+            path: "Example".into(),
+            operations,
+        };
+
+        report_live_summary(&installed, &reporter);
     }
 }

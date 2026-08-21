@@ -1,11 +1,15 @@
 //! Local development artifact construction and installation.
 
+mod live;
+
+pub(crate) use live::{LiveAction, LiveInstallResult, LiveOperation, LiveStatus, install_live};
+
 use crate::error::{Error, Result};
 use crate::project::{Project, ProjectLayout, ValidatedProject};
 use crate::system::environment::zomboid_root;
 use crate::system::fs::{
     atomic_replace, cleanup_staging_on_error, copy_file, copy_tree, remove_tree_if_exists,
-    replace_with_copy, staging_path,
+    replace_with_copy_with_lock_hint, staging_path,
 };
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -82,7 +86,11 @@ pub fn install(
             destination.display()
         )));
     }
-    let replacement = replace_with_copy(&artifact.path, &destination)?;
+    let replacement = replace_with_copy_with_lock_hint(
+        &artifact.path,
+        &destination,
+        "Exit to Project Zomboid's main menu and retry with `km install --live`. Live installation is non-atomic and must not be used inside a loaded world.",
+    )?;
     Ok(InstallResult {
         path: destination,
         warnings: replacement.cleanup_warning.into_iter().collect(),

@@ -6,6 +6,7 @@ use std::path::Path;
 use serde::Serialize;
 
 use super::args::{ColorChoice, OutputFormat, OutputOptions};
+use crate::build::{LiveOperation, LiveStatus};
 use crate::error::Error;
 
 /// Writes command data to stdout and diagnostics to stderr.
@@ -145,6 +146,51 @@ impl Reporter {
         }
     }
 
+    /// Emits one live-install file operation using its stable structured form.
+    pub(crate) fn live_operation(&self, operation: &LiveOperation) {
+        let diagnostic = matches!(operation.status, LiveStatus::Failed | LiveStatus::Skipped);
+        if self.options.quiet && !diagnostic {
+            return;
+        }
+        match self.options.format {
+            OutputFormat::Human => {
+                if operation.status == LiveStatus::Unchanged {
+                    return;
+                }
+                let message = format!(
+                    "{} {}: {}{}",
+                    operation.status.as_str(),
+                    operation.action.as_str(),
+                    operation.path.display(),
+                    operation
+                        .message
+                        .as_deref()
+                        .map(|message| format!(": {message}"))
+                        .unwrap_or_default()
+                );
+                if diagnostic {
+                    write_human(std::io::stderr(), &message);
+                } else {
+                    write_human(std::io::stdout(), &message);
+                }
+            }
+            OutputFormat::Json => {
+                let event = FileOperationEvent {
+                    event_type: "file_operation",
+                    action: operation.action.as_str(),
+                    status: operation.status.as_str(),
+                    path: &operation.path.display().to_string(),
+                    message: operation.message.as_deref(),
+                };
+                if diagnostic {
+                    write_json(std::io::stderr(), &event);
+                } else {
+                    write_json(std::io::stdout(), &event);
+                }
+            }
+        }
+    }
+
     /// Emits a human-readable Clap response while tolerating a closed output pipe.
     pub fn usage(error: &Error) {
         if error.exit_code() == 0 {
@@ -213,6 +259,23 @@ struct ModCopyEvent<'a> {
     path: &'a str,
 }
 
+/// A JSON event describing one live-install filesystem operation.
+#[derive(Serialize)]
+struct FileOperationEvent<'a> {
+    /// Event discriminator.
+    #[serde(rename = "type")]
+    event_type: &'static str,
+    /// Stable intended operation.
+    action: &'static str,
+    /// Stable operation outcome.
+    status: &'static str,
+    /// Artifact-relative path.
+    path: &'a str,
+    /// Failure or skip explanation.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    message: Option<&'a str>,
+}
+
 /// Writes text verbatim while tolerating a closed output pipe.
 fn write_raw(stream: impl Write, message: &str) {
     let mut stream = stream;
@@ -229,20 +292,41 @@ fn write_json(stream: impl Write, value: &impl Serialize) {
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
+    use crate::build::LiveAction;
+
     use super::*;
 
     #[test]
     fn renders_human_and_json_events() {
         for format in [OutputFormat::Human, OutputFormat::Json] {
-            let reporter = Reporter::new(OutputOptions {
-                quiet: true,
-                color: ColorChoice::Never,
-                format,
-            });
-            reporter.status("hidden status");
-            reporter.warning("visible warning");
-            reporter.path("test", "Test", Path::new("path"));
-            reporter.error(&Error::validation("invalid"));
+            for quiet in [true, false] {
+                let reporter = Reporter::new(OutputOptions {
+                    quiet,
+                    color: ColorChoice::Never,
+                    format,
+                });
+                reporter.status("status");
+                reporter.warning("visible warning");
+                reporter.path("test", "Test", Path::new("path"));
+                reporter.error(&Error::validation("invalid"));
+                reporter.mod_copy("local", "Local", Some("1.0.0"), true, Path::new("mod"));
+
+                for (status, message) in [
+                    (LiveStatus::Applied, None),
+                    (LiveStatus::Unchanged, None),
+                    (LiveStatus::Failed, Some("failed".to_owned())),
+                    (LiveStatus::Skipped, Some("skipped".to_owned())),
+                ] {
+                    reporter.live_operation(&LiveOperation {
+                        action: LiveAction::Update,
+                        status,
+                        path: PathBuf::from("42/file.lua"),
+                        message,
+                    });
+                }
+            }
         }
     }
 }

@@ -272,6 +272,24 @@ fn with_file_cleanup(primary: Error, cleanup: io::Result<()>, staging: &Path) ->
 
 /// Copies a directory into a sibling staging path and atomically replaces its destination.
 pub(crate) fn replace_with_copy(source: &Path, destination: &Path) -> Result<AtomicReplaceResult> {
+    replace_with_copy_with_hint(source, destination, None)
+}
+
+/// Copies and replaces a directory with recovery guidance for a locked destination.
+pub(crate) fn replace_with_copy_with_lock_hint(
+    source: &Path,
+    destination: &Path,
+    lock_hint: &str,
+) -> Result<AtomicReplaceResult> {
+    replace_with_copy_with_hint(source, destination, Some(lock_hint))
+}
+
+/// Copies and replaces a directory with an optional existing-destination hint.
+fn replace_with_copy_with_hint(
+    source: &Path,
+    destination: &Path,
+    lock_hint: Option<&str>,
+) -> Result<AtomicReplaceResult> {
     let parent = destination
         .parent()
         .ok_or_else(|| Error::project("copy destination has no parent"))?;
@@ -282,7 +300,8 @@ pub(crate) fn replace_with_copy(source: &Path, destination: &Path) -> Result<Ato
     fs::create_dir_all(parent).map_err(Error::io)?;
     let staging = staging_path(parent, id);
     remove_tree_if_exists(&staging)?;
-    let result = copy_tree(source, &staging).and_then(|()| atomic_replace(&staging, destination));
+    let result = copy_tree(source, &staging)
+        .and_then(|()| atomic_replace_with_hint(&RealFs, &staging, destination, lock_hint));
     cleanup_staging_on_error(result, &staging)
 }
 
@@ -311,6 +330,16 @@ fn atomic_replace_with(
     staging: &Path,
     destination: &Path,
 ) -> Result<AtomicReplaceResult> {
+    atomic_replace_with_hint(filesystem, staging, destination, None)
+}
+
+/// Replaces a directory with optional guidance when moving the existing destination fails.
+fn atomic_replace_with_hint(
+    filesystem: &impl MutationFs,
+    staging: &Path,
+    destination: &Path,
+    lock_hint: Option<&str>,
+) -> Result<AtomicReplaceResult> {
     let parent = destination
         .parent()
         .ok_or_else(|| Error::project("artifact destination has no parent"))?;
@@ -326,10 +355,11 @@ fn atomic_replace_with(
     if destination.exists()
         && let Err(error) = filesystem.rename(destination, &backup)
     {
-        return Err(destination_error(
+        return Err(destination_error_with_hint(
             &error,
             destination,
             "could not move the existing directory",
+            lock_hint,
         ));
     }
     if let Err(error) = filesystem.rename(staging, destination) {
@@ -393,10 +423,23 @@ fn atomic_replace_with(
 
 /// Adds destination context and recovery guidance to a filesystem error.
 fn destination_error(error: &std::io::Error, destination: &Path, action: &str) -> Error {
-    let hint = if error.kind() == std::io::ErrorKind::PermissionDenied {
-        " Project Zomboid or another program may be using these files; close it and try again."
-    } else {
-        ""
+    destination_error_with_hint(error, destination, action, None)
+}
+
+/// Adds optional recovery guidance only to permission-denied destination failures.
+fn destination_error_with_hint(
+    error: &std::io::Error,
+    destination: &Path,
+    action: &str,
+    recovery: Option<&str>,
+) -> Error {
+    let hint = match (error.kind(), recovery) {
+        (std::io::ErrorKind::PermissionDenied, Some(recovery)) => format!(" {recovery}"),
+        (std::io::ErrorKind::PermissionDenied, None) => {
+            " Project Zomboid or another program may be using these files; close it and try again."
+                .to_owned()
+        }
+        _ => String::new(),
     };
     Error::io(std::io::Error::new(
         error.kind(),
@@ -450,7 +493,7 @@ fn remove_link(filesystem: &impl MutationFs, path: &Path, metadata: &fs::Metadat
 }
 
 /// Reports whether a path is a symbolic link or Windows reparse-point link.
-fn is_link(path: &Path) -> Result<bool> {
+pub(crate) fn is_link(path: &Path) -> Result<bool> {
     fs::symlink_metadata(path)
         .map(|metadata| is_link_type(metadata.file_type()))
         .map_err(Error::io)
@@ -653,6 +696,36 @@ mod tests {
             "could not replace the directory",
         );
         assert!(denied.to_string().contains("close it and try again"));
+    }
+
+    #[test]
+    fn adds_live_install_guidance_only_to_locked_destination_moves() {
+        let temporary = tempdir().unwrap();
+        let destination = temporary.path().join("installed");
+        let staging = temporary.path().join("staging");
+        fs::create_dir(&destination).unwrap();
+        fs::create_dir(&staging).unwrap();
+        let filesystem =
+            FaultFs::with_renames([RenameAction::Fail(io::ErrorKind::PermissionDenied)]);
+
+        let error = atomic_replace_with_hint(
+            &filesystem,
+            &staging,
+            &destination,
+            Some("retry with `km install --live`"),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(error.contains("km install --live"));
+
+        let unrelated = destination_error_with_hint(
+            &io::Error::from(io::ErrorKind::Other),
+            &destination,
+            "could not replace",
+            Some("retry with `km install --live`"),
+        )
+        .to_string();
+        assert!(!unrelated.contains("km install --live"));
     }
 
     #[test]
