@@ -28,6 +28,7 @@ This installs `knoxmancer` and its `km` alias.
 | `km check --workshop` | Validate all Workshop publishing inputs without building |
 | `km build` | Build under `dist/dev` |
 | `km install` | Build and install under `~/Zomboid/mods` for local play |
+| `km install --live` | Synchronize an existing local copy for main-menu Lua reloading |
 | `km package` | Build a Workshop project under `dist/workshop` |
 | `km stage` | Package and copy under `~/Zomboid/Workshop` for uploading |
 | `km clean` | Remove generated artifacts |
@@ -50,6 +51,26 @@ staging is reported separately because it can publish old files but is not a
 normal gameplay source. Run `km stage` to refresh it. Knoxmancer never modifies
 Steam-managed subscription files; unsubscribe through Steam while testing a
 local copy.
+
+### Live installation
+
+Normal `km install` atomically replaces the complete local mod directory and is
+the safest default. If Project Zomboid is holding that directory open, exit to
+the main menu and use `km install --live` to synchronize the already-installed
+copy in place, then select **Reload Lua** before loading the world. Live mode is
+explicit and never used as an automatic fallback.
+
+Live installation verifies every copied file byte-for-byte and reports each
+created, updated, removed, failed, or skipped operation. It refuses to start
+without an existing local copy whose mod ID matches the build. If an update
+fails, stale files are retained and reported as skipped to avoid making the
+installed tree less complete. A failed final verification makes the command
+fail.
+
+Do not run live installation inside a loaded world: its in-place synchronization
+is intentionally non-atomic. Reload Lua is intended for changed Lua files; new
+or removed Lua files may not be discovered, and non-Lua changes may require a
+game restart. Knoxmancer warns when either limitation applies.
 
 ## Manifest
 
@@ -140,9 +161,11 @@ Warnings and errors are written to standard error. `--quiet` suppresses successf
 output but continues to report warnings and errors.
 
 Pass `--format json` to emit newline-delimited JSON objects. Every object has a
-stable `type` field (`status`, `path`, `mod_copy`, `warning`, or `error`). Path
-objects also contain `name` and `path`. Mod-copy objects contain `source`,
-`version`, `current`, and `path`. Error objects contain `kind`, `message`, and
+stable `type` field (`status`, `path`, `mod_copy`, `file_operation`, `warning`,
+or `error`). Path objects also contain `name` and `path`. Mod-copy objects
+contain `source`, `version`, `current`, and `path`. Live-install file-operation
+objects contain stable `action`, `status`, and `path` fields plus `message` when
+an operation fails or is skipped. Error objects contain `kind`, `message`, and
 `exit_code`. Help remains human-readable. Exit code `0` means success, `1` means
 a project, validation, environment, or filesystem failure, and `2` means invalid
 command-line usage.
