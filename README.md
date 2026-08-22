@@ -40,6 +40,9 @@ This installs `knoxmancer` and its `km` alias.
 Use `km install` for local testing and `km stage` before uploading through
 **Workshop > Create and update items**. Knoxmancer reports conflicting local,
 staged, and subscribed copies, but never modifies Steam-managed files.
+Because the game checks Workshop staging before local mods, a successful normal
+or live install removes matching staged mod content. Run `km stage` to recreate
+it when publishing.
 
 ### Live installation
 
