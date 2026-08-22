@@ -127,10 +127,19 @@ fn live_install_synchronizes_an_existing_local_copy() {
     let config = temporary.path().join("config.toml");
     let project = temporary.path().join("live-mod");
     let mods = temporary.path().join("mods");
+    let workshop = temporary.path().join("Workshop");
     assert!(
         km_with_config(&["new", path(&project)], &config)
             .status
             .success()
+    );
+    assert!(
+        km_with_config(
+            &["config", "set", "workshop-root", path(&workshop)],
+            &config,
+        )
+        .status
+        .success()
     );
 
     let missing = km_with_config(
@@ -168,6 +177,13 @@ fn live_install_synchronizes_an_existing_local_copy() {
     fs::write(project.join("src/media/new.txt"), "asset\n").unwrap();
     let installed = mods.join("LiveMod/42");
     fs::write(installed.join("obsolete.lua"), "return false\n").unwrap();
+    let staged = workshop.join("upload/Contents/mods/LiveMod/42");
+    fs::create_dir_all(&staged).unwrap();
+    fs::write(
+        staged.join("mod.info"),
+        "name=Live Mod\nid=LiveMod\nmodversion=0.1.0\n",
+    )
+    .unwrap();
 
     let output = km_with_config(
         &[
@@ -187,6 +203,7 @@ fn live_install_synchronizes_an_existing_local_copy() {
     assert!(stdout.contains("Live-installed for local play:"));
     assert!(stdout.contains("applied create:"));
     assert!(stdout.contains("applied remove:"));
+    assert!(stdout.contains("Removed Workshop staging copy:"));
     assert!(stderr.contains("non-atomic"));
     assert!(stderr.contains("non-Lua files changed"));
     assert!(stderr.contains("Lua files were added or removed"));
@@ -199,6 +216,7 @@ fn live_install_synchronizes_an_existing_local_copy() {
         "asset\n"
     );
     assert!(!installed.join("obsolete.lua").exists());
+    assert!(!workshop.join("upload/Contents/mods/LiveMod").exists());
 
     let json = km_with_config(
         &[
@@ -352,10 +370,12 @@ fn reports_local_staging_and_steam_copies() {
 
     let installed = km_with_config(&["--project", path(&project), "install"], &config);
     assert!(installed.status.success());
+    assert!(!workshop.join("item/Contents/mods/CopyMod").exists());
+    assert!(String::from_utf8_lossy(&installed.stdout).contains("Removed Workshop staging copy"));
     assert!(
         String::from_utf8(installed.stderr)
             .unwrap()
-            .contains("playable mod copies conflict")
+            .contains("Steam subscription may shadow the local mod")
     );
 
     let output = km_with_config(
@@ -368,11 +388,10 @@ fn reports_local_staging_and_steam_copies() {
         .lines()
         .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
         .collect::<Vec<_>>();
-    assert_eq!(events.len(), 3);
+    assert_eq!(events.len(), 2);
     assert!(events.iter().all(|event| event["type"] == "mod_copy"));
     assert_eq!(events[0]["source"], "local");
-    assert_eq!(events[1]["source"], "staging");
-    assert_eq!(events[2]["source"], "steam");
+    assert_eq!(events[1]["source"], "steam");
     assert!(!output.stderr.is_empty());
 
     let doctor = km_with_config(&["--project", path(&project), "doctor"], &config);
@@ -380,7 +399,7 @@ fn reports_local_staging_and_steam_copies() {
     assert!(
         String::from_utf8(doctor.stderr)
             .unwrap()
-            .contains("installed mod copies conflict")
+            .contains("mod copies conflict")
     );
 }
 
