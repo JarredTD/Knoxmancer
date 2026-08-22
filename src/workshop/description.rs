@@ -9,12 +9,20 @@ use crate::project::{Project, ProjectLayout, WorkshopMetadata};
 
 /// Maximum UTF-8 byte length accepted by Steam Workshop.
 pub(crate) const DESCRIPTION_MAX_BYTES: usize = 8_000;
+/// Description token replaced with the validated `mod.info` release version.
+const MOD_VERSION_MARKER: &str = "{{MOD_VERSION}}";
 
 /// Renders the public Markdown description into `workshop.txt`.
-pub(crate) fn render(project: &Project, metadata: &WorkshopMetadata) -> Result<String> {
+pub(crate) fn render(
+    project: &Project,
+    metadata: &WorkshopMetadata,
+    mod_version: &str,
+) -> Result<String> {
     let public = ProjectLayout::new(project)?.public_root()?;
     let description_path = public.join("description.md");
-    let markdown = fs::read_to_string(&description_path).map_err(Error::io)?;
+    let markdown = fs::read_to_string(&description_path)
+        .map_err(Error::io)?
+        .replace(MOD_VERSION_MARKER, mod_version);
     let description = markdown_to_bbcode(&markdown).map_err(|message| {
         Error::validation(format!("{}: {message}", description_path.display()))
     })?;
@@ -300,19 +308,27 @@ mod tests {
         fs::create_dir(&public).unwrap();
         fs::write(public.join("description.md"), "plain").unwrap();
         assert!(
-            render(&value, &metadata())
+            render(&value, &metadata(), "1.2.3")
                 .unwrap()
                 .contains("description=plain")
         );
+        fs::write(
+            public.join("description.md"),
+            "Current version: **{{MOD_VERSION}}**",
+        )
+        .unwrap();
+        let rendered = render(&value, &metadata(), "1.2.3").unwrap();
+        assert!(rendered.contains("description=Current version: [b]1.2.3[/b]"));
+        assert!(!rendered.contains(MOD_VERSION_MARKER));
         fs::write(public.join("description.md"), "\n").unwrap();
-        assert!(render(&value, &metadata()).is_err());
+        assert!(render(&value, &metadata(), "1.2.3").is_err());
         fs::write(public.join("description.md"), "<b>html</b>").unwrap();
-        assert!(render(&value, &metadata()).is_err());
+        assert!(render(&value, &metadata(), "1.2.3").is_err());
         fs::write(
             public.join("description.md"),
             "x".repeat(DESCRIPTION_MAX_BYTES),
         )
         .unwrap();
-        assert!(render(&value, &metadata()).is_err());
+        assert!(render(&value, &metadata(), "1.2.3").is_err());
     }
 }

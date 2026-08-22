@@ -42,7 +42,11 @@ pub(crate) fn package(validated: &ValidatedProject<'_>) -> Result<PackageResult>
         let Some(workshop) = validated.workshop.as_ref() else {
             return Err(Error::validation("Workshop metadata was not validated"));
         };
-        fs::write(staging.join("workshop.txt"), render(project, workshop)?).map_err(Error::io)?;
+        fs::write(
+            staging.join("workshop.txt"),
+            render(project, workshop, &metadata.version)?,
+        )
+        .map_err(Error::io)?;
         atomic_replace(&staging, &destination)
     })();
     let replacement = cleanup_staging_on_error(result, &staging)?;

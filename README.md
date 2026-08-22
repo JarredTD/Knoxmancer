@@ -85,6 +85,8 @@ src/
 
 Lua folders map into `42/media/lua`; `media` maps into `42/media`. Workshop
 metadata and assets live in `public`. Generated files go to `dist`.
+Use `{{MOD_VERSION}}` in `public/description.md` to insert the current
+`modversion` from `src/mod.info` whenever a Workshop package is created.
 
 ## User defaults
 
