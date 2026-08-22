@@ -102,12 +102,23 @@ pub(crate) fn run(cli: Cli, reporter: &Reporter) -> Result<()> {
                 ));
                 reporter.status("Next: enable the mod in Project Zomboid.");
             }
+            let workshop_root = crate::system::environment::zomboid_root(
+                config.workshop_root.as_deref(),
+                "Workshop",
+            )?;
+            for removed in crate::system::copies::remove_staging_copies(
+                &built.mod_id,
+                &built.build,
+                &workshop_root,
+            )? {
+                reporter.path("removed_staging", "Removed Workshop staging copy", &removed);
+            }
             let copies = discover_copies_for(&built.mod_id, &built.build, &config, root, None)?;
             report_copies(&copies, &built.version, reporter);
             report_stale_staging(&copies, &built.version, reporter);
-            if crate::system::copies::has_playable_conflict(&copies, &built.version) {
+            if crate::system::copies::has_resolution_conflict(&copies, &built.version) {
                 reporter.warning(
-                    "playable mod copies conflict; run `km copies` and unsubscribe the Steam copy while testing locally",
+                    "a Steam subscription may shadow the local mod; run `km copies` and unsubscribe it while testing locally",
                 );
             }
             Ok(())
@@ -163,9 +174,10 @@ pub(crate) fn run(cli: Cli, reporter: &Reporter) -> Result<()> {
                 validated.metadata.version
             ));
             report_stale_staging(&copies, &validated.metadata.version, reporter);
-            if crate::system::copies::has_playable_conflict(&copies, &validated.metadata.version) {
+            if crate::system::copies::has_resolution_conflict(&copies, &validated.metadata.version)
+            {
                 reporter.warning(
-                    "playable mod copies still conflict; run `km copies` before testing locally",
+                    "staged or subscribed copies may shadow the local mod; run `km copies` before testing locally",
                 );
             }
             reporter.status("Next: open Workshop > Create and update items in Project Zomboid.");
@@ -255,9 +267,9 @@ fn doctor(start: Option<&std::path::Path>, reporter: &Reporter) -> Result<()> {
     let copies = discover_copies(&validated, &loaded.values)?;
     report_copies(&copies, &validated.metadata.version, reporter);
     report_stale_staging(&copies, &validated.metadata.version, reporter);
-    if crate::system::copies::has_playable_conflict(&copies, &validated.metadata.version) {
+    if crate::system::copies::has_resolution_conflict(&copies, &validated.metadata.version) {
         return Err(Error::project(
-            "installed mod copies conflict; run `km copies` and unsubscribe stale Steam copies",
+            "mod copies conflict; run `km copies`, remove stale staging, and unsubscribe stale Steam copies",
         ));
     }
     reporter.status("Doctor: ready for local play and Workshop packaging.");
@@ -421,9 +433,9 @@ fn copies(project: &Project, config: &UserConfig, reporter: &Reporter) -> Result
     }
     report_copies(&copies, &validated.metadata.version, reporter);
     report_stale_staging(&copies, &validated.metadata.version, reporter);
-    if crate::system::copies::has_playable_conflict(&copies, &validated.metadata.version) {
+    if crate::system::copies::has_resolution_conflict(&copies, &validated.metadata.version) {
         reporter.warning(
-            "multiple or outdated playable copies can make Project Zomboid load unexpected files",
+            "staged, subscribed, or outdated copies can make Project Zomboid load unexpected files",
         );
     }
     Ok(())

@@ -5,6 +5,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::error::{Error, Result};
+use crate::system::fs::{is_link, remove_tree_if_exists};
 
 /// Steam application identifier for Project Zomboid.
 const PROJECT_ZOMBOID_APP_ID: &str = "108600";
@@ -37,11 +38,6 @@ impl CopySource {
             Self::Staging => "Workshop staging",
             Self::Steam => "Steam subscription",
         }
-    }
-
-    /// Whether Project Zomboid can load this copy during normal play.
-    pub(crate) fn is_playable(self) -> bool {
-        matches!(self, Self::Local | Self::Steam)
     }
 }
 
@@ -87,13 +83,60 @@ pub(crate) fn discover(
     Ok(copies)
 }
 
-/// Returns whether normal play can select an unexpected or ambiguous copy.
-pub(crate) fn has_playable_conflict(copies: &[InstalledCopy], version: &str) -> bool {
-    let playable = copies
-        .iter()
-        .filter(|copy| copy.source.is_playable())
-        .collect::<Vec<_>>();
-    playable.len() > 1 || playable.iter().any(|copy| !copy.is_current(version))
+/// Returns whether mod resolution can select an unexpected or ambiguous copy.
+pub(crate) fn has_resolution_conflict(copies: &[InstalledCopy], version: &str) -> bool {
+    copies.len() > 1 || copies.iter().any(|copy| !copy.is_current(version))
+}
+
+/// Removes every staged mod directory whose validated ID matches this project.
+pub(crate) fn remove_staging_copies(
+    mod_id: &str,
+    build: &str,
+    workshop_root: &Path,
+) -> Result<Vec<PathBuf>> {
+    let mut copies = Vec::new();
+    scan_staging(workshop_root, mod_id, build, &mut copies)?;
+    let paths = copies.into_iter().map(|copy| copy.path).collect::<Vec<_>>();
+    validate_staging_removals(workshop_root, &paths)?;
+    for path in &paths {
+        remove_tree_if_exists(path).map_err(|error| {
+            Error::io(std::io::Error::other(format!(
+                "local installation succeeded, but failed to remove Workshop staging copy {}: {error}",
+                path.display()
+            )))
+        })?;
+    }
+    Ok(paths)
+}
+
+/// Proves every staged removal stays below the configured Workshop root.
+fn validate_staging_removals(workshop_root: &Path, paths: &[PathBuf]) -> Result<()> {
+    if paths.is_empty() {
+        return Ok(());
+    }
+    let canonical_root = fs::canonicalize(workshop_root).map_err(Error::io)?;
+    for path in paths {
+        let relative = path.strip_prefix(workshop_root).map_err(|_| {
+            Error::project(format!(
+                "unsafe Workshop staging cleanup path: {}",
+                path.display()
+            ))
+        })?;
+        if relative.components().count() != 4 || is_link(path)? {
+            return Err(Error::project(format!(
+                "unsafe Workshop staging cleanup path: {}",
+                path.display()
+            )));
+        }
+        let canonical = fs::canonicalize(path).map_err(Error::io)?;
+        if !canonical.starts_with(&canonical_root) {
+            return Err(Error::project(format!(
+                "Workshop staging copy resolves outside its configured root: {}",
+                path.display()
+            )));
+        }
+    }
+    Ok(())
 }
 
 /// Scans one conventional directory containing mod directories.
@@ -368,7 +411,7 @@ mod tests {
 
         let copies = discover("Example", "42", &mods, &staging, Some(&steam)).unwrap();
         assert_eq!(copies.len(), 4);
-        assert!(has_playable_conflict(&copies, "1.0.0"));
+        assert!(has_resolution_conflict(&copies, "1.0.0"));
         assert_eq!(
             copies
                 .iter()
@@ -378,6 +421,47 @@ mod tests {
         );
         assert_eq!(copies[2].source, CopySource::Staging);
         assert_eq!(copies[3].source, CopySource::Steam);
+    }
+
+    #[test]
+    fn removes_only_matching_staged_mod_directories() {
+        let temporary = tempdir().unwrap();
+        let staging = temporary.path().join("Workshop");
+        let first = staging.join("project-a/Contents/mods/first-name");
+        let second = staging.join("project-b/Contents/mods/second-name");
+        let unrelated = staging.join("project-b/Contents/mods/unrelated");
+        write_mod(&first, "42", "Example", Some("0.9.0"));
+        write_mod(&second, "42", "Example", Some("1.0.0"));
+        write_mod(&unrelated, "42", "Other", Some("1.0.0"));
+
+        let removed = remove_staging_copies("Example", "42", &staging).unwrap();
+
+        assert_eq!(removed, [first.clone(), second.clone()]);
+        assert!(!first.exists());
+        assert!(!second.exists());
+        assert!(unrelated.is_dir());
+        assert!(
+            remove_staging_copies("Missing", "42", &staging)
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn refuses_to_remove_staged_links() {
+        use std::os::unix::fs::symlink;
+
+        let temporary = tempdir().unwrap();
+        let staging = temporary.path().join("Workshop");
+        let container = staging.join("project/Contents/mods");
+        let outside = temporary.path().join("outside");
+        write_mod(&outside, "42", "Example", Some("1.0.0"));
+        fs::create_dir_all(&container).unwrap();
+        symlink(&outside, container.join("linked")).unwrap();
+
+        assert!(validate_staging_removals(&staging, &[container.join("linked")]).is_err());
+        assert!(outside.is_dir());
     }
 
     #[test]
@@ -427,18 +511,18 @@ mod tests {
     }
 
     #[test]
-    fn treats_one_current_playable_copy_as_unambiguous() {
+    fn treats_one_current_load_candidate_as_unambiguous() {
         let copy = InstalledCopy {
             source: CopySource::Local,
             version: Some("1.0.0".to_owned()),
             path: PathBuf::from("Example"),
         };
-        assert!(!has_playable_conflict(&[copy], "1.0.0"));
+        assert!(!has_resolution_conflict(&[copy], "1.0.0"));
         let stale = InstalledCopy {
             source: CopySource::Steam,
             version: Some("0.9.0".to_owned()),
             path: PathBuf::from("Stale"),
         };
-        assert!(has_playable_conflict(&[stale], "1.0.0"));
+        assert!(has_resolution_conflict(&[stale], "1.0.0"));
     }
 }
