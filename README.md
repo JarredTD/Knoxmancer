@@ -1,64 +1,61 @@
 # Knoxmancer
 
 [![CI](https://github.com/JarredTD/Knoxmancer/actions/workflows/ci.yml/badge.svg)](https://github.com/JarredTD/Knoxmancer/actions/workflows/ci.yml)
-[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
+[![License: AGPL-3.0-only](https://img.shields.io/badge/license-AGPL--3.0--only-blue.svg)](LICENSE)
 
-Project Zomboid mod development CLI. Knoxmancer is an unofficial project and
-is not affiliated with The Indie Stone.
+Knoxmancer is a public command-line tool for creating, validating, building, installing, and staging
+Project Zomboid Build 42 mods. It is unofficial and is not affiliated with The Indie Stone.
 
-## Install
+## Features
 
-Requires Rust 1.97 or newer.
+- Creates and adopts source-oriented Build 42 mod projects.
+- Validates mod metadata, source layouts, Workshop inputs, and preview images.
+- Builds local development copies and complete Workshop packages from the same source.
+- Installs mods atomically or synchronizes an existing copy for main-menu Lua reloading.
+- Detects conflicting local, staged, and Steam-managed copies without modifying subscribed content.
+- Produces human-readable output or stable JSON Lines for automation.
 
-```sh
+## Setup
+
+Install Rust 1.97 or newer, then install Knoxmancer from its repository:
+
+```shell
 cargo install --git https://github.com/JarredTD/Knoxmancer --locked
 ```
 
-This installs `knoxmancer` and its `km` alias.
+This installs both `knoxmancer` and the shorter `km` command. A source checkout additionally needs
+`cargo-llvm-cov` 0.9.0 and `cargo-audit` 0.22.2; `cargo xtask check` runs the complete local gate.
 
-## Commands
+## Usage
 
 | Command | Result |
 | --- | --- |
 | `km new <directory>` | Create a Build 42 project |
 | `km init` | Adopt the current source-oriented project |
-| `km paths` | Show resolved artifact, installation, and staging paths |
-| `km copies` | Find matching local, staged, and Steam Workshop copies |
 | `km check` | Validate the playable mod |
-| `km check --workshop` | Validate all Workshop publishing inputs without building |
+| `km check --workshop` | Validate Workshop publishing inputs |
 | `km build` | Build under `dist/dev` |
-| `km install` | Build and install under `~/Zomboid/mods` for local play |
-| `km install --live` | Synchronize an existing local copy for main-menu Lua reloading |
+| `km install` | Atomically install under the resolved local mods root |
+| `km install --live` | Synchronize an existing copy for main-menu Lua reloading |
 | `km package` | Build a Workshop project under `dist/workshop` |
-| `km stage` | Package and copy under `~/Zomboid/Workshop` for uploading |
-| `km clean` | Remove generated artifacts |
-| `km config show/set/unset` | Manage machine-specific defaults |
-| `km completions <shell>` | Generate a shell completion script |
-| `km doctor` | Run read-only project and environment readiness checks |
-| `km open <target>` | Open an existing artifact or game-facing directory |
+| `km stage` | Package and copy under the resolved Workshop staging root |
+| `km paths` | Show resolved artifact, installation, and staging paths |
+| `km copies` | Find matching local, staged, and subscribed copies |
+| `km doctor` | Run read-only project and environment checks |
+| `km clean` | Remove generated project artifacts |
 
-Use `km install` for local testing and `km stage` before uploading through
-**Workshop > Create and update items**. Knoxmancer reports conflicting local,
-staged, and subscribed copies, but never modifies Steam-managed files.
-Because the game checks Workshop staging before local mods, a successful normal
-or live install removes matching staged mod content. Run `km stage` to recreate
-it when publishing.
+Use `km install` for ordinary local testing and `km stage` immediately before uploading through
+Project Zomboid's **Workshop > Create and update items** flow. A normal or live install removes a
+matching staged mod copy because the game loads Workshop staging before local mods. It never changes
+Steam-managed subscribed files.
 
-### Live installation
+Live installation updates an existing matching copy in place and verifies every copied file. Use it
+only from the main menu, then select **Reload Lua** before loading a world. New or removed Lua files
+and non-Lua changes may still require a game restart.
 
-`km install` atomically replaces the local copy and is the default. If the game
-locks that directory, exit to the main menu, run `km install --live`, then use
-**Reload Lua** before loading the world.
+## Configuration
 
-Live mode updates an existing matching install in place, verifies copied files,
-and reports partial failures. Never run it inside a loaded world. New or removed
-Lua files and non-Lua changes may still require a game restart. Knoxmancer never
-falls back to live mode automatically.
-
-## Manifest
-
-`knoxmancer.toml` defines the game build, project directories, and optional
-Workshop package files:
+Each project owns a `knoxmancer.toml` manifest:
 
 ```toml
 manifest_version = 1
@@ -75,59 +72,26 @@ output = "dist"
 include = []
 ```
 
-Paths are relative to the project root. The conventional source layout is:
+Machine-specific author, mods-root, Workshop-root, and Steam-root defaults are stored outside the
+project. Manage them with `km config show`, `km config set`, and `km config unset`; command options
+take precedence. Steam libraries are discovered automatically when possible.
 
-```text
-src/
-|-- mod.info
-|-- client/
-|-- shared/
-|-- server/
-`-- media/
-```
+The conventional source layout places `mod.info`, `client`, `shared`, `server`, and `media` beneath
+`src`. Workshop metadata and assets live in `public`, while generated files remain under `dist`.
+`{{MOD_VERSION}}` in `public/description.md` resolves to the version in `src/mod.info` during
+packaging.
 
-Lua folders map into `42/media/lua`; `media` maps into `42/media`. Workshop
-metadata and assets live in `public`. Generated files go to `dist`.
-Use `{{MOD_VERSION}}` in `public/description.md` to insert the current
-`modversion` from `src/mod.info` whenever a Workshop package is created.
+## Architecture
 
-## User defaults
+Knoxmancer separates project validation, artifact construction, Workshop rendering, machine-specific
+environment discovery, and filesystem mutation. Project manifests remain portable; user paths and
+discovered installations remain outside the repository. Destructive and publishing-adjacent actions
+are explicit, and Steam-managed content is treated as read-only.
 
-Machine-specific defaults stay outside the project manifest. Command options
-such as `install --root` and `stage --root` take precedence.
-
-```sh
-km config set author "Your Name"
-km config set mods-root "C:\Users\you\Zomboid\mods"
-km config set workshop-root "C:\Users\you\Zomboid\Workshop"
-km config set steam-root "D:\Steam"
-km config show
-km config unset author
-```
-
-Steam roots and additional libraries are discovered automatically. Configure a
-root only when discovery is insufficient. Completion scripts can be printed or
-written directly:
-
-```sh
-km completions powershell > _km.ps1
-km completions bash --output km.bash
-km completions zsh --bin knoxmancer --output _knoxmancer
-```
-
-## Output contract
-
-Success goes to standard output; warnings and errors go to standard error.
-`--quiet` hides successful output. `--format json` emits JSON Lines with stable
-event types, including per-file live-install operations. Exit codes are `0` for
-success, `1` for operational failure, and `2` for invalid usage.
-
-```sh
-km --format json paths
-km --format json copies
-km --quiet check
-```
+Successful output is written to standard output; warnings and errors use standard error. `--quiet`
+hides successful output, while `--format json` emits JSON Lines with stable event types. Exit codes
+are `0` for success, `1` for operational failure, and `2` for invalid usage.
 
 ## License
 
-Knoxmancer is licensed under the [GNU Affero General Public License v3](LICENSE).
+Knoxmancer is licensed under the [GNU Affero General Public License v3.0 only](LICENSE).
