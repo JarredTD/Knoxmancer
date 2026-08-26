@@ -9,6 +9,11 @@ repository = "https://github.com/JarredTD/Knoxmancer"
 readme = "README.md"
 publish = false
 
+[workspace]
+members = ["xtask"]
+default-members = ["."]
+resolver = "3"
+
 [[bin]]
 name = "knoxmancer"
 path = "src/main.rs"
